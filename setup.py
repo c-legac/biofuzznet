@@ -40,20 +40,20 @@ except FileNotFoundError:
 
 # TODO: Update these values according to the name of the module.
 setup(
-    name="blueprint",
-    version=read_version("blueprint/__init__.py"),  # single place for version
-    description="Installable blueprint package. Modify as needed.",
+    name="biomaxflow",
+    version=read_version("biomaxlow/__init__.py"),  # single place for version
+    description="Flow maximization for biological networks with measured node levels.",
     long_description=open("README.md").read(),
-    url="https://github.ibm.com/CHCLS/blueprint-python-package",
-    author="Antonio Foncubierta Rodríguez, Matteo Manica, Joris Cadow",
-    author_email="fra@zurich.ibm.com, tte@zurich.ibm.com, dow@zurich.ibm.com",
+    url="https://github.ibm.com/SysBio/BioMaxFlow",
+    author="Alice Driessen",
+    author_email="adr@zurich.ibm.com",
     # the following exclusion is to prevent shipping of tests.
     # if you do include them, add pytest to the required packages.
     packages=find_packages(".", exclude=["*tests*"]),
-    package_data={"blueprint": ["py.typed"]},
+    package_data={"biomaxflow": ["py.typed"]},
     entry_points="""
         [console_scripts]
-        salutation=blueprint.complex_module.core:formal_introduction
+        salutation=biomaxflow.complex_module.core:formal_introduction
     """,
     scripts=["bin/brief_salutation", "bin/a_shell_script"],
     extras_require={
