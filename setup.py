@@ -41,7 +41,7 @@ except FileNotFoundError:
 # TODO: Update these values according to the name of the module.
 setup(
     name="biomaxflow",
-    version=read_version("biomaxlow/__init__.py"),  # single place for version
+    version=read_version("biomaxflow/__init__.py"),  # single place for version
     description="Flow maximization for biological networks with measured node levels.",
     long_description=open("README.md").read(),
     url="https://github.ibm.com/SysBio/BioMaxFlow",
