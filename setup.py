@@ -40,19 +40,22 @@ except FileNotFoundError:
 
 # TODO: Update these values according to the name of the module.
 setup(
-    name="bionics",
-    version=read_version("bionics/__init__.py"),  # single place for version
-    description="Learning cell characteristics from signalling networks and sc measurements",
+    name="blueprint",
+    version=read_version("blueprint/__init__.py"),  # single place for version
+    description="Installable blueprint package. Modify as needed.",
     long_description=open("README.md").read(),
-    url="https://github.ibm.com/SysBio/BioNICs",
-    author="Alice Driessen",
-    author_email="adr@zurich.ibm.com",
+    url="https://github.ibm.com/CHCLS/blueprint-python-package",
+    author="Antonio Foncubierta Rodríguez, Matteo Manica, Joris Cadow",
+    author_email="fra@zurich.ibm.com, tte@zurich.ibm.com, dow@zurich.ibm.com",
     # the following exclusion is to prevent shipping of tests.
     # if you do include them, add pytest to the required packages.
     packages=find_packages(".", exclude=["*tests*"]),
-    package_data={"bionics": ["py.typed"]},
-    # entry_points=""" """,
-    # scripts=[" "],
+    package_data={"blueprint": ["py.typed"]},
+    entry_points="""
+        [console_scripts]
+        salutation=blueprint.complex_module.core:formal_introduction
+    """,
+    scripts=["bin/brief_salutation", "bin/a_shell_script"],
     extras_require={
         "vcs": VCS_REQUIREMENTS,
         "test": ["pytest", "pytest-cov"],
