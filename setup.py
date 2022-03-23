@@ -51,11 +51,8 @@ setup(
     # if you do include them, add pytest to the required packages.
     packages=find_packages(".", exclude=["*tests*"]),
     package_data={"biomaxflow": ["py.typed"]},
-    entry_points="""
-        [console_scripts]
-        salutation=biomaxflow.complex_module.core:formal_introduction
-    """,
-    scripts=["bin/brief_salutation", "bin/a_shell_script"],
+    # entry_points=""" """,
+    # scripts=[" "],
     extras_require={
         "vcs": VCS_REQUIREMENTS,
         "test": ["pytest", "pytest-cov"],
