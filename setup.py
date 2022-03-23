@@ -40,22 +40,19 @@ except FileNotFoundError:
 
 # TODO: Update these values according to the name of the module.
 setup(
-    name="biomaxflow",
-    version=read_version("biomaxflow/__init__.py"),  # single place for version
-    description="Flow maximization for biological networks with measured node levels.",
+    name="bionics",
+    version=read_version("bionics/__init__.py"),  # single place for version
+    description="Learning cell characteristics from signalling networks and sc measurements",
     long_description=open("README.md").read(),
-    url="https://github.ibm.com/SysBio/BioMaxFlow",
+    url="https://github.ibm.com/SysBio/BioNICs",
     author="Alice Driessen",
     author_email="adr@zurich.ibm.com",
     # the following exclusion is to prevent shipping of tests.
     # if you do include them, add pytest to the required packages.
     packages=find_packages(".", exclude=["*tests*"]),
-    package_data={"biomaxflow": ["py.typed"]},
-    entry_points="""
-        [console_scripts]
-        salutation=biomaxflow.complex_module.core:formal_introduction
-    """,
-    scripts=["bin/brief_salutation", "bin/a_shell_script"],
+    package_data={"bionics": ["py.typed"]},
+    # entry_points=""" """,
+    # scripts=[" "],
     extras_require={
         "vcs": VCS_REQUIREMENTS,
         "test": ["pytest", "pytest-cov"],
