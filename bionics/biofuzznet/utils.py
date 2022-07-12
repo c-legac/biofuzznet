@@ -76,7 +76,7 @@ def has_cycle(G: nx.DiGraph) -> Tuple[bool, list]:
 
 def weighted_loss(
     loss_fcn, weight: dict, predictions: dict, ground_truth: dict
-) -> torch.Tensor:
+) -> int:
 
     """
     Compute the weighted sum of the loss of type loss_type (ie MSELoss) for each measured node.
