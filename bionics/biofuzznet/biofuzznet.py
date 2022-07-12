@@ -19,7 +19,7 @@ import pandas as pd
 from tqdm import tqdm
 from datetime import datetime
 import copy
-from typing import Union
+from typing import Optional
 import warnings
 
 
@@ -342,6 +342,7 @@ class BioFuzzNet(DiGraph):
         """
         if edge not in self.edges():
             raise NameError(f"The input edge {edge} does not exist.")
+            assert False
         if self.edges()[edge]["edge_type"] == "simple":
             state_to_propagate = self.nodes[edge[0]]["output_state"]
             return state_to_propagate
@@ -353,6 +354,7 @@ class BioFuzzNet(DiGraph):
             return state_to_propagate
         else:
             NameError("The node type is incorrect")
+            assert False
 
     def integrate_NOT(self, node: str) -> torch.Tensor:
         """
@@ -470,7 +472,7 @@ class BioFuzzNet(DiGraph):
 
     def update_one_timestep_cyclic_network(
         self, input_nodes, loop_status, convergence_check=False
-    ) -> Union[None, dict]:
+    ) -> Optional[dict]:
         """
         Does the sequential update of a directed cyclic graph over one timestep: ie updates each node in the network only once.
         Args:
@@ -526,10 +528,10 @@ class BioFuzzNet(DiGraph):
                             current_nodes.append(c)
         if convergence_check:
             return self.output_states  # For checking convergence
+        else:
+            return None
 
-    def sequential_update(
-        self, input_nodes, convergence_check=False
-    ) -> Union[None, dict]:
+    def sequential_update(self, input_nodes, convergence_check=False) -> Optional[dict]:
         """
         Update the graph by propagating the signal from root node (or given input node)
         to leaf node. This update is sequential according to Boolean networks terminology.
@@ -617,6 +619,8 @@ class BioFuzzNet(DiGraph):
                 self.nodes()[n]["output_state"] = output_tensor
         if convergence_check:
             return states  # For checking convergence
+        else:
+            return None
 
     # Optimisation methods
 
