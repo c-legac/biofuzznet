@@ -1,0 +1,33 @@
+# README
+
+The intent of this file is to provide a desription of how a BioFuzzNet is implemented and why those implementation choices were made.
+
+## General description of a BioFuzzNet
+
+A BioFuzzNet is an object encoding a Boolean network (assumed to represent a biological system, although any Boolean network can be used) and supporting a fuzzy logic formalism. 
+
+### Graphical structure of a BioFuzzNet
+
+A BioFuzzNet is at its core a networkx DiGraph with different types of nodes and edges.
+Nodes can be of four types:
+    * Biological nodes represent biological entities, or "real" nodes, that is the species that are modelled
+    * Logical nodes can be of three types: AND, OR, or NOT. The logical operations correspond to the fuzzy equivalent of the usual Boolean logic operations. More information on those operations can be found by looking for "fuzzy logic operators" or "Zadeh logic operators".
+        * NOT gates must have an in-degree of one and implement a fuzzy logic negation given by output = 1 - input. 
+        * AND gates must have an in-degree of two and implement a fuzzy logic conjunction. If i1 and i2 are the two inputs, the output of the AND gate is given by $output = i1 * i2$
+        * OR gates must have an in-degree of two and implement a fuzzy logic disjunction. If i1 and i2 are the two inputs, the output of the OR gate is given by $output = (i1 + i2)- i1 * i2$
+    
+Edges can be of two types. There are always positive, as negations are encoded through the NOT gates:
+    * Simple edges which merely transmit the output state of the updstream node to the downstream node. Those always have a logical node as an upstream node and can have a logical or biological node as a downstream node
+    * Transfer edges which transform the output of the upstream node through a transfer function before transmitting it to the downstream node. Those always have a biological node as an upstream node, and can have a logical or biological node as an upstream node.
+The rationale behind this choice is that the Hill functions model the way the biological entity will act on other biological entities.
+
+### Structure of the Hill functions
+
+Non-normalized Hill functions were chosen to act as transfer functions. Hill functions were chosen at they are known to be acceptable mathematical representations for a range of biological phenomena. 
+Each transfer function has two parameters:
+    * n is the Hill cooperativity coefficient. It represents the steepness of the curve and is always positive.
+    * K is the EC50 coefficient and represent the concentration of input at which 50 \% of the maximum response is used.
+Due to the shape of and parameterization of the Hill function, $\forall n, K: Hill(0, n, K) = 0 \text{ and } Hill(1, n, K) = \frac{1}{1 + K^n}$. Hence by manipulating the value of K and n it is possiblel to get a value of Hill(1, n, K) arbitrarily close to 0 and thus "turn the edge OFF".
+It would also be possible to add and tune a scale parameter. However this seemed to reduce the identifiability of the model and was rejected.
+
+## Optimising the parameters of a BioFuzzNet
