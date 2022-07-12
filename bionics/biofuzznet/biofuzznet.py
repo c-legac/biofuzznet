@@ -6,6 +6,7 @@ ALL RIGHTS RESERVED
 """
 
 # modules defined in biofuzznet/
+# Pylance throws a reportMissingImports but thos actually works.
 from bionics.biofuzznet.utils import has_cycle, weighted_loss, read_sif
 from bionics.biofuzznet.Hill_function import HillTransferFunction
 from bionics.biofuzznet.biofuzzdataset import BioFuzzDataset
@@ -327,7 +328,7 @@ class BioFuzzNet(DiGraph):
                 )
 
     # Update methods
-    def propagate_along_edge(self, edge: tuple) -> int:
+    def propagate_along_edge(self, edge: tuple) -> torch.Tensor:
         """
         Transmits node state along an edge.
         If an edge is simple: then it returns the state at the upstream node. No computation occurs in this case.
@@ -353,7 +354,7 @@ class BioFuzzNet(DiGraph):
         else:
             NameError("The node type is incorrect")
 
-    def integrate_NOT(self, node: str) -> int:
+    def integrate_NOT(self, node: str) -> torch.Tensor:
         """
         Computes the NOT operation at a NOT gate
 
@@ -373,7 +374,7 @@ class BioFuzzNet(DiGraph):
             # We work with tensors
             return ones - state_to_integrate
 
-    def integrate_AND(self, node: str) -> int:
+    def integrate_AND(self, node: str) -> torch.Tensor:
         """
         Integrate the state values from all incoming nodes at an AND gate.
         Cannot support more than two input gates.
@@ -394,7 +395,7 @@ class BioFuzzNet(DiGraph):
         # Multiply all the tensors
         return states_to_integrate[0] * states_to_integrate[1]
 
-    def integrate_OR(self, node: str) -> int:
+    def integrate_OR(self, node: str) -> torch.Tensor:
         """
         Integrate the state values from all incoming nodes at an OR gate.
         Cannot support more than two input gates.
@@ -419,7 +420,7 @@ class BioFuzzNet(DiGraph):
             - states_to_integrate[0] * states_to_integrate[1]
         )
 
-    def integrate_logical_node(self, node: str) -> int:
+    def integrate_logical_node(self, node: str) -> torch.Tensor:
         """
         A wrapper around integrate_NOT, integrate_OR and integrate_AND to integrate any logical node independent of the gate.
 
@@ -438,11 +439,13 @@ class BioFuzzNet(DiGraph):
         else:
             raise NameError("This node is not a known logic gate.")
 
-    def update_biological_node(self, node: str) -> None:
+    def update_biological_node(self, node: str) -> torch.Tensor:
         """
         Returns the updated output state of a node when propagating  through the graph.
         Args:
             - node: name of the biological node to update
+        Return:
+            - a torch.Tensor representing the updated value of the node
         """
         parent_node = [p for p in self.predecessors(node)]
         if len(parent_node) > 1:
