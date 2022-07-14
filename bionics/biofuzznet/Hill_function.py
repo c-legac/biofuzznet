@@ -9,6 +9,8 @@ ALL RIGHTS RESERVED
 
 import torch
 
+torch.set_default_tensor_type(torch.DoubleTensor)
+
 
 class HillTransferFunction(torch.nn.Module):
     """Apply a Hill transformation on 1D input"""
