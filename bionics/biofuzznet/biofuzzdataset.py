@@ -8,7 +8,7 @@ ALL RIGHTS RESERVED
 """
 
 import torch
-
+torch.set_default_tensor_type(torch.DoubleTensor)
 # Create datasets and dataloader objects to iterate over batches of data
 
 

@@ -671,6 +671,7 @@ class BioFuzzNet(DiGraph):
             - Allow tuning between AND and OR gates using backpropagation
         """
         torch.autograd.set_detect_anomaly(True)
+        torch.set_default_tensor_type(torch.DoubleTensor)
         # Input nodes
         if self.root_nodes == []:
             input_nodes = [k for k in test_input.keys()]
@@ -682,6 +683,12 @@ class BioFuzzNet(DiGraph):
 
         # Instantiate the dataloader
         dataloader = torch.utils.data.DataLoader(
+            dataset, batch_size=batch_size, shuffle=True
+        )
+
+        # Create a dataset and dataloader for the test set
+        dataset_test = BioFuzzDataset(test_input, test_ground_truth)
+        dataloader_test = torch.utils.data.DataLoader(
             dataset, batch_size=batch_size, shuffle=True
         )
 
@@ -728,7 +735,7 @@ class BioFuzzNet(DiGraph):
                 optim.zero_grad()
                 loss.backward(retain_graph=True)
 
-                # torch.nn.utils.clip_grad_norm_(parameters, max_norm=5)
+                torch.nn.utils.clip_grad_norm_(parameters, max_norm=5)
                 # Update the parameters
                 optim.step()
                 # We save metrics with their time to be able to compare training vs test even though they are not logged with the same frequency
@@ -747,33 +754,34 @@ class BioFuzzNet(DiGraph):
                     ignore_index=True,
                 )
             with torch.no_grad():
-                # Test set must be the size of the batch size
-                self.set_network_ground_truth(ground_truth=test_ground_truth)
-                # Simulation
-                self.sequential_update(input_nodes)
-                # Get the predictions
-                predictions = self.output_states
-                # Compute the loss
-                test_loss = loss_wrapper(
-                    loss_fcn,
-                    weight=loss_weights,
-                    predictions=predictions,
-                    ground_truth=test_ground_truth,
-                )
+                for X_test_batch, y_test_batch in dataloader_test:
 
-            # No need to detach since there are no gradients
-            losses = pd.concat(
-                [
-                    losses,
-                    pd.DataFrame(
-                        {
-                            "time": datetime.now(),
-                            "loss": test_loss.item(),
-                            "phase": "test",
-                        },
-                        index=[0],
-                    ),
-                ],
-                ignore_index=True,
-            )
+                    self.set_network_ground_truth(ground_truth=y_test_batch)
+                    # Simulation
+                    self.sequential_update(input_nodes)
+                    # Get the predictions
+                    predictions = self.output_states
+                    # Compute the loss
+                    test_loss = loss_wrapper(
+                        loss_fcn,
+                        weight=loss_weights,
+                        predictions=predictions,
+                        ground_truth=y_test_batch,
+                    )
+
+                # No need to detach since there are no gradients
+                losses = pd.concat(
+                    [
+                        losses,
+                        pd.DataFrame(
+                            {
+                                "time": datetime.now(),
+                                "loss": test_loss.item(),
+                                "phase": "test",
+                            },
+                            index=[0],
+                        ),
+                    ],
+                    ignore_index=True,
+                )
         return losses

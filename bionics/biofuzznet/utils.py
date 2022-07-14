@@ -7,6 +7,9 @@ ALL RIGHTS RESERVED
 import torch
 import networkx as nx
 from typing import Tuple
+from math import sqrt
+
+torch.set_default_tensor_type(torch.DoubleTensor)
 
 
 def read_sif(filepath: str) -> Tuple[list, dict]:
@@ -74,9 +77,7 @@ def has_cycle(G: nx.DiGraph) -> Tuple[bool, list]:
     return (has_cycle, cycle_list)
 
 
-def weighted_loss(
-    loss_fcn, weight: dict, predictions: dict, ground_truth: dict
-) -> int:
+def weighted_loss(loss_fcn, weight: dict, predictions: dict, ground_truth: dict) -> int:
 
     """
     Compute the weighted sum of the loss of type loss_type (ie MSELoss) for each measured node.
@@ -150,3 +151,151 @@ def draw_BioFuzzNet(
     nx.draw_networkx_edges(G, pos, edge_color=edge_colors)
     nx.draw_networkx_labels(G, pos, font_size=8)
     return pos
+
+
+def obtain_params(G) -> Tuple[dict, list, list]:
+    """
+    Return a tuple of the list of values taken by parameters n and K
+        of a HillTransferFunction from a BioFuzzNet.
+
+    Args:
+        A BioFuzzNet
+
+    Return:
+        Tuple[dictionnary mapping transfer edges to their parameter values,
+            list of values of n,
+            list of values of K]
+    """
+    param_dict = {
+        e: [p for p in G.edges()[e]["layer"].parameters()] for e in G.transfer_edges
+    }
+    n = []
+    K = []
+    for edge, params in param_dict.items():
+        ni = torch.exp(params[0]).item()
+        Ki = torch.exp(params[1]).item()
+        n.append(ni)
+        K.append(Ki)
+    return (param_dict, n, K)
+
+
+def param_dict_to_lists(param_dict) -> Tuple[list, list]:
+    """
+    Separate a dictionnary mapping transfer edges with HillTransferFunction
+        to the values of the parameters of the HillTransferFunction into two
+        lists of parameter values
+
+    Args:
+        param_dict: a dictionnary mapping transfer edges with HillTransferFunction
+            to the values of the parameters of the HillTransferFunction
+    """
+    n = []
+    K = []
+    for edge, params in param_dict.items():
+        ni = torch.exp(params[0]).item()
+        Ki = torch.exp(params[1]).item()
+        n.append(ni)
+        K.append(Ki)
+    return (n, K)
+
+
+def compute_MSE(list_1: list, list_2: list):
+    """
+    Compute the MSE between two same-length list of parameters.
+    Squared error is computed between list_1[i] and list_2[i].
+
+    Args:
+        list_1
+        list_2
+    Return:
+        Mean Squared Error between the elements of those 2 lists
+    """
+
+    squared_error = [(list_1[i] - list_2[i]) ** 2 for i in range(len(list_1))]
+    return sum(squared_error) / len(squared_error)
+
+
+def compute_relative_RMSE(list_1: list, list_2: list):
+    """
+    Compute the relative RMSE between two same-length list of parameters.
+    Squared error is computed between list_1[i] and list_2[i]. list_1 is assumed
+    to contain the true parameters and list_2 the estimators
+
+    Args:
+        list_1
+        list_2
+    Return:
+        Relative Root Mean Squared Error between the elements of those 2 lists
+    """
+
+    mean_squared_error = sum(
+        [(list_1[i] - list_2[i]) ** 2 for i in range(len(list_1))]
+    ) / len(list_1)
+    return sqrt(mean_squared_error) / sqrt(
+        sum([list_2[i] ** 2 for i in range(len(list_2))])
+    )
+
+
+def compute_R2_score(list_1: list, list_2: list):
+    """
+    Compute the R2 score between two same-length list of parameters
+    assuming list_2 = f(list_1) and that the true f should be identity.
+
+    Args:
+        list_1: x-axis
+        list_2: y-axis
+    Return:
+        R2-score between the elements of those 2 lists
+    """
+    # Assume the true model is identity, the residual sum of square is compared to f(x) = x
+    rss = sum([(list_2[i] - list_1[i]) ** 2 for i in range(len(list_1))])
+    tss = sum(
+        [(list_2[i] - sum(list_2) / len(list_2)) ** 2 for i in range(len(list_2))]
+    )
+    return 1 - rss / tss
+
+
+def compute_RMSE_outputs(model):
+    """
+    Compute the RMSE between the model output state and the ground truth
+
+    Args:
+        model, BioFuzzNet
+    Return:
+        a dictionnary of the Root Mean Squared Error between the the model output
+        state and the ground truth for each node
+    """
+    rmse = {}
+    for node in model.biological_nodes:
+        rmse[node] = torch.sqrt(
+            torch.sum(
+                (model.output_states[node] - model.nodes()[node]["ground_truth"]) ** 2
+            )
+            / len(model.output_states[node])
+        )
+    return rmse
+
+
+def compute_relative_RMSE_outputs(model):
+    """
+    Compute the relative RMSE between the model output state and the ground truth
+
+    Args:
+        model, BioFuzzNet
+    Return:
+        a dictionnary of the Root Mean Squared Error between the the model output
+        state and the ground truth for each node
+    """
+    rrmse = {}
+    for node in model.biological_nodes:
+        rrmse[node] = torch.sqrt(
+            (
+                torch.sum(
+                    (model.output_states[node] - model.nodes()[node]["ground_truth"])
+                    ** 2
+                )
+                / len(model.output_states[node])
+            )
+            / (torch.sum(model.output_states[node]))
+        )
+    return rrmse
