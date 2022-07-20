@@ -20,7 +20,7 @@ class HillTransferFunction(torch.nn.Module):
 
         self.n = torch.nn.Parameter(torch.normal(mean=0, std=0.75, size=(1,)))
         self.K = torch.nn.Parameter(torch.normal(mean=-0.5, std=0.75, size=(1,)))
-        self.output_value = None
+        self.sum_term = torch.nn.Parameter(torch.tensor(0.0))
 
     def forward(self, x):
         """what gets called when you run mymodel(x)"""
