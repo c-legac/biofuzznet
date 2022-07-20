@@ -78,61 +78,128 @@ def has_cycle(G: nx.DiGraph) -> Tuple[bool, list]:
     return (has_cycle, cycle_list)
 
 
-def weighted_loss(
-    loss_fcn, weight: dict, predictions: dict, ground_truth: dict
-) -> float:
+# def weighted_loss(
+#     loss_fcn, weight: dict, predictions: dict, ground_truth: dict
+# ) -> float:
+
+#     """
+#     Compute the weighted sum of the loss of type loss_type (ie MSELoss) for each measured node.
+#     Args:
+#         - loss_fcn a loss function implemented in torch, used for computing the partial loss at each node
+#         - weight: dict mapping each nodesto the weight to assign to its partial loss
+#         - predictions: dict mapping each node to its predicted value
+#         - ground_truth: dict mapping each node to its ground_truth. Unobserved nodes should not be present in ground truth.
+#     """
+#     loss = 0
+#     for measured_node in ground_truth:
+#         loss = loss + weight[measured_node] * loss_fcn(
+#             predictions[measured_node], ground_truth[measured_node]
+#         )
+#     return loss
+
+
+def dictionnary_to_tensor(output_dict):
+    # The different nodes represent the different features of my model I think
+    """
+    Tranforms a dictionnary representing the output or ground truth of a BioFuzzNet
+    into a tensor matrix of shape number_of_nodes * number_of_cells.
+    Args:
+        output_dict: dict mapping nodes of a BioFuzzNet to a tensor of values
+    Returns:
+        a tensor matrix of shape number_of_nodes * number_of_cells
+    """
+    keys = list(output_dict.keys())
+    node_number = len(keys)  # Features
+    k = keys.pop()
+    cell_number = len(output_dict[k])  # Samples
+    # Get list of tensors to concatenate
+    to_concat = list(output_dict.values())
+    matrix = torch.cat(to_concat)
+    matrix = matrix.reshape((node_number, cell_number))
+    return matrix
+
+
+def MSE_loss(predictions: dict, ground_truth: dict):
 
     """
-    Compute the weighted sum of the loss of type loss_type (ie MSELoss) for each measured node.
-    Args:
-        - loss_fcn a loss function implemented in torch, used for computing the partial loss at each node
-        - weight: dict mapping each nodesto the weight to assign to its partial loss
-        - predictions: dict mapping each node to its predicted value
-        - ground_truth: dict mapping each node to its ground_truth. Unobserved nodes should not be present in ground truth.
+    Compute the MSE loss over all nodes of the network
+    Args :
+    - predictions: dict mapping each node to its predicted value
+    - ground_truth: dict mapping each node to its ground_truth.
+         Unobserved nodes should not be present in ground truth.
     """
-    loss = 0
-    for measured_node in ground_truth:
-        loss = loss + weight[measured_node] * loss_fcn(
-            predictions[measured_node], ground_truth[measured_node]
-        )
+    # Get the matrices
+    predictions = dictionnary_to_tensor(predictions)
+    ground_truth = dictionnary_to_tensor(ground_truth)
+    # Compute the squared loss without any reduction
+    mse_loss = torch.nn.MSELoss(reduction="none")
+    squared_loss = mse_loss(predictions, ground_truth)
+    # Then I can average however I want
+    # I will then average over the network nodes
+    loss = torch.mean(squared_loss, 0)
+    # Then I average over the batch
+    loss = torch.mean(loss)
     return loss
 
 
-def weighted_and_mixed_loss(
-    loss_fcn,
-    weight: dict,
-    predictions: dict,
-    ground_truth: dict,
-    mixed_gates_regularisation: float,
-    gates: list,
-) -> float:
+# def weighted_and_mixed_loss(
+#     loss_fcn,
+#     weight: dict,
+#     predictions: dict,
+#     ground_truth: dict,
+#     mixed_gates_regularisation: float,
+#     gates: list,
+# ) -> float:
 
+#     """
+#     Compute the weighted sum of the loss of type loss_type (ie MSELoss) for each measured node.
+#     Args:
+#         - loss_fcn a loss function implemented in torch, used for computing the partial loss at each node
+#         - weight: dict mapping each nodesto the weight to assign to its partial loss
+#         - predictions: dict mapping each node to its predicted value
+#         - ground_truth: dict mapping each node to its ground_truth. Unobserved nodes should not be present in ground truth.
+#         - mixed_gates_regularisation: parameters for the regularisation of the mixed gates. If it has value p_reg, for each mixed gate,
+#             we add the value p_reg*AND_param*(1-AND_param)
+#         - gates: list of mixed gates in the network
+#     """
+#     # Loss on the nodes' output value
+#     weighted_loss = 0
+#     for measured_node in ground_truth:
+#         weighted_loss = weighted_loss + weight[measured_node] * loss_fcn(
+#             predictions[measured_node], ground_truth[measured_node]
+#         )
+
+#     # Loss to constrain the mixed gates to be majorly AND or OR
+#     regularisation_loss = 0
+#     for mixed_gate in gates:
+#         regularisation_loss = regularisation_loss + mixed_gates_regularisation * (
+#             torch.sigmoid(mixed_gate.AND_param)
+#             * (1 - torch.sigmoid(mixed_gate.AND_param))
+#         )
+
+#     loss = weighted_loss + regularisation_loss
+#     return {"loss": loss, "reg_loss": regularisation_loss}
+
+
+def MSE_entropy_loss(predictions, ground_truth, mixed_gates_regularisation, gates):
     """
-    Compute the weighted sum of the loss of type loss_type (ie MSELoss) for each measured node.
+    Compute a MSE loss mixed with a separate loss for regularising the MIXED gates in BioMixNets.
     Args:
-        - loss_fcn a loss function implemented in torch, used for computing the partial loss at each node
-        - weight: dict mapping each nodesto the weight to assign to its partial loss
         - predictions: dict mapping each node to its predicted value
         - ground_truth: dict mapping each node to its ground_truth. Unobserved nodes should not be present in ground truth.
         - mixed_gates_regularisation: parameters for the regularisation of the mixed gates. If it has value p_reg, for each mixed gate,
             we add the value p_reg*AND_param*(1-AND_param)
+        - gates: list of mixed gates in the network
     """
-    # Loss on the nodes' output value
-    weighted_loss = 0
-    for measured_node in ground_truth:
-        weighted_loss = weighted_loss + weight[measured_node] * loss_fcn(
-            predictions[measured_node], ground_truth[measured_node]
-        )
-
-    # Loss to constrain the mixed gates to be majorly AND or OR
+    mse_loss = MSE_loss(predictions=predictions, ground_truth=ground_truth)
     regularisation_loss = 0
     for mixed_gate in gates:
-        regularisation_loss = regularisation_loss + mixed_gates_regularisation * (
+        regularisation_loss = regularisation_loss + (
             torch.sigmoid(mixed_gate.AND_param)
             * (1 - torch.sigmoid(mixed_gate.AND_param))
         )
-
-    loss = weighted_loss + regularisation_loss
+        
+    loss = mse_loss + mixed_gates_regularisation * regularisation_loss
     return {"loss": loss, "reg_loss": regularisation_loss}
 
 
@@ -275,6 +342,25 @@ def compute_relative_RMSE(list_1: list, list_2: list):
     return sqrt(mean_squared_error) / sqrt(
         sum([list_2[i] ** 2 for i in range(len(list_2))])
     )
+
+
+def compute_relative_error(list_1: list, list_2: list):
+    """
+    Compute the relative RMSE between two same-length list of parameters.
+    Squared error is computed between list_1[i] and list_2[i]. list_1 is assumed
+    to contain the true parameters and list_2 the estimators.
+
+    Args:
+        list_1
+        list_2
+    Return:
+        List of Relative Error for each element of those 2 lists
+    """
+
+    relative_error = [
+        sqrt((list_1[i] - list_2[i]) ** 2) / list_1[i] for i in range(len(list_1))
+    ]
+    return relative_error
 
 
 def compute_R2_score(list_1: list, list_2: list):
