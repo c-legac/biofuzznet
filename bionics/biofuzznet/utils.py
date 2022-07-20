@@ -9,6 +9,7 @@ import networkx as nx
 from typing import Tuple
 from math import sqrt
 
+
 torch.set_default_tensor_type(torch.DoubleTensor)
 
 
@@ -77,7 +78,9 @@ def has_cycle(G: nx.DiGraph) -> Tuple[bool, list]:
     return (has_cycle, cycle_list)
 
 
-def weighted_loss(loss_fcn, weight: dict, predictions: dict, ground_truth: dict) -> int:
+def weighted_loss(
+    loss_fcn, weight: dict, predictions: dict, ground_truth: dict
+) -> float:
 
     """
     Compute the weighted sum of the loss of type loss_type (ie MSELoss) for each measured node.
@@ -93,6 +96,44 @@ def weighted_loss(loss_fcn, weight: dict, predictions: dict, ground_truth: dict)
             predictions[measured_node], ground_truth[measured_node]
         )
     return loss
+
+
+def weighted_and_mixed_loss(
+    loss_fcn,
+    weight: dict,
+    predictions: dict,
+    ground_truth: dict,
+    mixed_gates_regularisation: float,
+    gates: list,
+) -> float:
+
+    """
+    Compute the weighted sum of the loss of type loss_type (ie MSELoss) for each measured node.
+    Args:
+        - loss_fcn a loss function implemented in torch, used for computing the partial loss at each node
+        - weight: dict mapping each nodesto the weight to assign to its partial loss
+        - predictions: dict mapping each node to its predicted value
+        - ground_truth: dict mapping each node to its ground_truth. Unobserved nodes should not be present in ground truth.
+        - mixed_gates_regularisation: parameters for the regularisation of the mixed gates. If it has value p_reg, for each mixed gate,
+            we add the value p_reg*AND_param*(1-AND_param)
+    """
+    # Loss on the nodes' output value
+    weighted_loss = 0
+    for measured_node in ground_truth:
+        weighted_loss = weighted_loss + weight[measured_node] * loss_fcn(
+            predictions[measured_node], ground_truth[measured_node]
+        )
+
+    # Loss to constrain the mixed gates to be majorly AND or OR
+    regularisation_loss = 0
+    for mixed_gate in gates:
+        regularisation_loss = regularisation_loss + mixed_gates_regularisation * (
+            torch.sigmoid(mixed_gate.AND_param)
+            * (1 - torch.sigmoid(mixed_gate.AND_param))
+        )
+
+    loss = weighted_loss + regularisation_loss
+    return {"loss": loss, "reg_loss": regularisation_loss}
 
 
 # Possibly deprecated
