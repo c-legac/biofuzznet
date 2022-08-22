@@ -7,7 +7,8 @@ ALL RIGHTS RESERVED
 import torch
 import networkx as nx
 from typing import Tuple
-from math import sqrt
+from math import sqrt, exp
+import pandas as pd
 
 
 torch.set_default_tensor_type(torch.DoubleTensor)
@@ -78,26 +79,6 @@ def has_cycle(G: nx.DiGraph) -> Tuple[bool, list]:
     return (has_cycle, cycle_list)
 
 
-# def weighted_loss(
-#     loss_fcn, weight: dict, predictions: dict, ground_truth: dict
-# ) -> float:
-
-#     """
-#     Compute the weighted sum of the loss of type loss_type (ie MSELoss) for each measured node.
-#     Args:
-#         - loss_fcn a loss function implemented in torch, used for computing the partial loss at each node
-#         - weight: dict mapping each nodesto the weight to assign to its partial loss
-#         - predictions: dict mapping each node to its predicted value
-#         - ground_truth: dict mapping each node to its ground_truth. Unobserved nodes should not be present in ground truth.
-#     """
-#     loss = 0
-#     for measured_node in ground_truth:
-#         loss = loss + weight[measured_node] * loss_fcn(
-#             predictions[measured_node], ground_truth[measured_node]
-#         )
-#     return loss
-
-
 def dictionnary_to_tensor(output_dict):
     # The different nodes represent the different features of my model I think
     """
@@ -128,6 +109,8 @@ def MSE_loss(predictions: dict, ground_truth: dict):
     - ground_truth: dict mapping each node to its ground_truth.
          Unobserved nodes should not be present in ground truth.
     """
+    # Remove unobserved nodes from the prediction
+    predictions = {key: predictions[key] for key in ground_truth.keys()}
     # Get the matrices
     predictions = dictionnary_to_tensor(predictions)
     ground_truth = dictionnary_to_tensor(ground_truth)
@@ -141,44 +124,6 @@ def MSE_loss(predictions: dict, ground_truth: dict):
     loss = torch.mean(loss)
     return loss
 
-
-# def weighted_and_mixed_loss(
-#     loss_fcn,
-#     weight: dict,
-#     predictions: dict,
-#     ground_truth: dict,
-#     mixed_gates_regularisation: float,
-#     gates: list,
-# ) -> float:
-
-#     """
-#     Compute the weighted sum of the loss of type loss_type (ie MSELoss) for each measured node.
-#     Args:
-#         - loss_fcn a loss function implemented in torch, used for computing the partial loss at each node
-#         - weight: dict mapping each nodesto the weight to assign to its partial loss
-#         - predictions: dict mapping each node to its predicted value
-#         - ground_truth: dict mapping each node to its ground_truth. Unobserved nodes should not be present in ground truth.
-#         - mixed_gates_regularisation: parameters for the regularisation of the mixed gates. If it has value p_reg, for each mixed gate,
-#             we add the value p_reg*AND_param*(1-AND_param)
-#         - gates: list of mixed gates in the network
-#     """
-#     # Loss on the nodes' output value
-#     weighted_loss = 0
-#     for measured_node in ground_truth:
-#         weighted_loss = weighted_loss + weight[measured_node] * loss_fcn(
-#             predictions[measured_node], ground_truth[measured_node]
-#         )
-
-#     # Loss to constrain the mixed gates to be majorly AND or OR
-#     regularisation_loss = 0
-#     for mixed_gate in gates:
-#         regularisation_loss = regularisation_loss + mixed_gates_regularisation * (
-#             torch.sigmoid(mixed_gate.AND_param)
-#             * (1 - torch.sigmoid(mixed_gate.AND_param))
-#         )
-
-#     loss = weighted_loss + regularisation_loss
-#     return {"loss": loss, "reg_loss": regularisation_loss}
 
 
 def MSE_entropy_loss(predictions, ground_truth, mixed_gates_regularisation, gates):
@@ -198,9 +143,9 @@ def MSE_entropy_loss(predictions, ground_truth, mixed_gates_regularisation, gate
             torch.sigmoid(mixed_gate.AND_param)
             * (1 - torch.sigmoid(mixed_gate.AND_param))
         )
-        
+
     loss = mse_loss + mixed_gates_regularisation * regularisation_loss
-    return {"loss": loss, "reg_loss": regularisation_loss}
+    return loss
 
 
 # Possibly deprecated
@@ -275,13 +220,13 @@ def obtain_params(G) -> Tuple[dict, list, list]:
             list of values of K]
     """
     param_dict = {
-        e: [p for p in G.edges()[e]["layer"].parameters()] for e in G.transfer_edges
+        e: [p.item() for p in G.edges()[e]["layer"].parameters()] for e in G.transfer_edges
     }
     n = []
     K = []
     for edge, params in param_dict.items():
-        ni = torch.exp(params[0]).item()
-        Ki = torch.exp(params[1]).item()
+        ni = exp(params[0])
+        Ki = exp(params[1])
         n.append(ni)
         K.append(Ki)
     return (param_dict, n, K)
@@ -358,7 +303,7 @@ def compute_relative_error(list_1: list, list_2: list):
     """
 
     relative_error = [
-        sqrt((list_1[i] - list_2[i]) ** 2) / list_1[i] for i in range(len(list_1))
+        sqrt((list_1[i] - list_2[i]) ** 2) / list_2[i] for i in range(len(list_1))
     ]
     return relative_error
 
@@ -382,7 +327,7 @@ def compute_R2_score(list_1: list, list_2: list):
     return 1 - rss / tss
 
 
-def compute_RMSE_outputs(model):
+def compute_RMSE_outputs(model, ground_truth):
     """
     Compute the RMSE between the model output state and the ground truth
 
@@ -393,13 +338,13 @@ def compute_RMSE_outputs(model):
         state and the ground truth for each node
     """
     rmse = {}
-    for node in model.biological_nodes:
+    for node in ground_truth.keys():
         rmse[node] = torch.sqrt(
             torch.sum(
-                (model.output_states[node] - model.nodes()[node]["ground_truth"]) ** 2
+                (model.output_states[node] - ground_truth[node]) ** 2
             )
             / len(model.output_states[node])
-        )
+        ).item()
     return rmse
 
 
@@ -423,6 +368,31 @@ def compute_relative_RMSE_outputs(model):
                 )
                 / len(model.output_states[node])
             )
-            / (torch.sum(model.output_states[node]))
+            / (torch.sum(model.output_states[node] ** 2))
         )
     return rrmse
+
+
+def compute_RRSE_outputs(model):
+    """
+    Compute the RRSE between the model output state and the ground truth
+
+    Args:
+        model, BioFuzzNet
+    Return:
+        a dictionnary of the Root Mean Squared Error between the the model output
+        state and the ground truth for each node
+    """
+    rrse = {}
+    for node in model.biological_nodes:
+        mean_val = torch.mean(model.output_states[node])
+        rrse[node] = torch.sqrt(
+            (
+                torch.sum(
+                    (model.output_states[node] - model.nodes()[node]["ground_truth"])
+                    ** 2
+                )
+            )
+            / (torch.sum((model.output_states[node] - mean_val) ** 2))
+        )
+    return rrse
