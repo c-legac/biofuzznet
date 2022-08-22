@@ -6,7 +6,10 @@ ALL RIGHTS RESERVED
 """
 # modules defined in biofuzznet/
 # Pylance throws a reportMissingImports but thos actually works.
-from bionics.biofuzznet.utils import weighted_and_mixed_loss
+from bionics.biofuzznet.utils import (
+    MSE_entropy_loss,
+    read_sif,
+)  # weighted_and_mixed_loss
 from bionics.biofuzznet.biofuzznet import BioFuzzNet
 from bionics.biofuzznet.biofuzzdataset import BioFuzzDataset
 from bionics.biofuzznet.mixed_gate import MixedGate
@@ -31,7 +34,7 @@ class BioMixNet(BioFuzzNet):
         self,
         nodes=None,
         edges=None,
-        AND_param=0.,
+        AND_param=0.0,
     ):
         """
         Initialises a BioMixNet.
@@ -56,6 +59,10 @@ class BioMixNet(BioFuzzNet):
                     OR_function=self.integrate_OR,
                 )
 
+    def build_BioMixNet_from_file(filepath: str):
+        nodes, edges = read_sif(filepath)
+        return BioMixNet(nodes, edges)
+
     @property
     def mixed_gates(self):
         mixed_gates = [
@@ -65,7 +72,9 @@ class BioMixNet(BioFuzzNet):
         ]
         return mixed_gates
 
-    def add_fuzzy_node(self, node_name: str, type: str, AND_param=0.): # torch.sigmoid(0) = 0.5
+    def add_fuzzy_node(
+        self, node_name: str, type: str, AND_param=0.0
+    ):  # torch.sigmoid(0) = 0.5
         """
         Add node to a BioFuzzNet
         Args:
@@ -130,7 +139,7 @@ class BioMixNet(BioFuzzNet):
         epochs: int,
         batch_size: int,
         learning_rate: float,
-        loss_wrapper=weighted_and_mixed_loss,
+        loss_wrapper=None,
         loss_fcn=torch.nn.MSELoss(),
         loss_weights=None,
         mixed_gates_regularisation=1.0,
@@ -172,9 +181,7 @@ class BioMixNet(BioFuzzNet):
                 - the parameters to optimise
                 - the learning rate
 
-        POSSIBLE UPDATES:
-            - Allow tuning between AND and OR gates using backpropagation
-        """
+          """
         torch.autograd.set_detect_anomaly(True)
         torch.set_default_tensor_type(torch.DoubleTensor)
         # Input nodes
@@ -212,8 +219,6 @@ class BioMixNet(BioFuzzNet):
 
         # Train the model
         losses = pd.DataFrame(columns=["time", "loss", "phase"])
-        reg_losses = pd.DataFrame(columns=["time", "regularisation loss", "phase"])
-
         for e in tqdm(range(epochs)):
 
             for X_batch, y_batch in dataloader:
@@ -228,17 +233,12 @@ class BioMixNet(BioFuzzNet):
                 # Get the predictions
                 predictions = self.output_states
 
-                # Compute the loss
-                loss_dict = loss_wrapper(
-                    loss_fcn,
-                    weight=loss_weights,
+                loss = MSE_entropy_loss(
                     predictions=predictions,
                     ground_truth=y_batch,
                     gates=[self.nodes[node]["gate"] for node in self.mixed_gates],
                     mixed_gates_regularisation=mixed_gates_regularisation,
                 )
-                loss = loss_dict["loss"]
-                reg_loss = loss_dict["reg_loss"]
                 # First reset then compute the gradients
                 optim.zero_grad()
                 loss.backward(retain_graph=True)
@@ -261,20 +261,7 @@ class BioMixNet(BioFuzzNet):
                     ],
                     ignore_index=True,
                 )
-                reg_losses = pd.concat(
-                    [
-                        reg_losses,
-                        pd.DataFrame(
-                            {
-                                "time": datetime.now(),
-                                "loss": reg_loss.detach().item(),
-                                "phase": "train",
-                            },
-                            index=[0],
-                        ),
-                    ],
-                    ignore_index=True,
-                )
+
             with torch.no_grad():
 
                 #   Instantiate the model
@@ -286,16 +273,12 @@ class BioMixNet(BioFuzzNet):
                 self.sequential_update(input_nodes)
                 # Get the predictions
                 predictions = self.output_states
-                # Compute the loss
-                test_loss_dict = loss_wrapper(
-                    loss_fcn,
-                    weight=loss_weights,
+                test_loss = MSE_entropy_loss(
                     predictions=predictions,
                     ground_truth=test_ground_truth,
                     gates=[self.nodes[node]["gate"] for node in self.mixed_gates],
                     mixed_gates_regularisation=mixed_gates_regularisation,
                 )
-                test_loss = test_loss_dict["loss"]
                 # No need to detach since there are no gradients
                 losses = pd.concat(
                     [
@@ -311,4 +294,4 @@ class BioMixNet(BioFuzzNet):
                     ],
                     ignore_index=True,
                 )
-        return losses, reg_losses
+        return losses

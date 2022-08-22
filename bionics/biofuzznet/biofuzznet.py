@@ -7,7 +7,8 @@ ALL RIGHTS RESERVED
 
 # modules defined in biofuzznet/
 # Pylance throws a reportMissingImports but thos actually works.
-from bionics.biofuzznet.utils import has_cycle, weighted_loss, read_sif
+
+from bionics.biofuzznet.utils import has_cycle, read_sif, MSE_loss  # , weighted_loss
 from bionics.biofuzznet.Hill_function import HillTransferFunction
 from bionics.biofuzznet.biofuzzdataset import BioFuzzDataset
 
@@ -28,6 +29,17 @@ class BioFuzzNet(DiGraph):
     on which fuzzy logic operations can be implemented."""
 
     def __init__(self, nodes=None, edges=None):
+        """
+        Initialise a BioFuzzNet.
+
+        Args:
+            nodes: list of nodes of the network
+            edges: dict mapping tuple (upstraeam_edge, downstream_edge) to edge weight
+             (which should be 1 or -1)
+
+        Default initialises an empty BioFuzzNet
+
+        """
         super().__init__()
 
         if nodes is not None and edges is not None:
@@ -39,6 +51,11 @@ class BioFuzzNet(DiGraph):
                 ):  # Different convention than CellNOpt for more readability
                     # This node is an AND gate
                     self.add_fuzzy_node(node, "AND")
+                elif (
+                    "_or_" in node
+                ):  # Different convention than CellNOpt for more readability
+                    # This node is an OR gate
+                    self.add_fuzzy_node(node, "OR")
                 else:
                     self.add_fuzzy_node(node, "BIO")
             # At this point all biological nodes have been added
@@ -269,6 +286,13 @@ class BioFuzzNet(DiGraph):
                         curr_parent = or_node
 
                 self.add_simple_edge(or_node, b_node)
+        # If I have several inputs to an AND gate then there's a mistake
+        for node, attributes in self.nodes(data=True):
+            predecessors = list(self.predecessors(node))
+            if attributes["node_type"] == "logic_gate_AND" and len(predecessors) > 2:
+                raise ValueError(
+                    f"AND gate {node} has too many inputs, please explicitly indicate AND and OR gates in the SIF file. "
+                )
 
     @classmethod
     def build_BioFuzzNet_from_file(cls, filepath: str):
@@ -309,6 +333,14 @@ class BioFuzzNet(DiGraph):
             - ground_truth: a dict mapping the name of each biological node to a tensor representing its ground_truth.
         NB: No ground truth value is set for non-measured nodes, the loss function should thus be consequentially chosen
         """
+        # First check that all root nodes at least have an input
+        missing_inputs = []
+        for node in self.root_nodes:
+            if node not in ground_truth.keys():
+                missing_inputs.append(node)
+        if len(missing_inputs) > 0:
+            raise ValueError(f"Missing input values for root nodes {missing_inputs}")
+
         for node_name in self.biological_nodes:
             parents = [p for p in self.predecessors(node_name)]
             if node_name in ground_truth.keys():
@@ -415,6 +447,7 @@ class BioFuzzNet(DiGraph):
         states_to_integrate = [
             self.propagate_along_edge(edge) for edge in upstream_edges
         ]
+
         # Multiply all the tensors
         return (
             states_to_integrate[0]
@@ -595,14 +628,16 @@ class BioFuzzNet(DiGraph):
                                 current_nodes.append(c)
         else:
             # The time of the simulation is 2 times the size of the biggest cycle
-            length = max([len(cycle) for cycle in has_cycle(self)[1]])
+            length = 3 * max([len(cycle) for cycle in has_cycle(self)[1]])
             # We simulate length times then output the mean of the last length simulations
-            for i in range(length):
+            # CHANGED length to int(length/2)
+            states[0] = self.output_states
+            for i in range(1, int(length)):
                 states[i] = self.update_one_timestep_cyclic_network(
                     input_nodes, loop_status, convergence_check
                 )
             last_states = {}
-            for i in range(length):
+            for i in range(int(length)):
                 states[length + i] = self.update_one_timestep_cyclic_network(
                     input_nodes, loop_status, convergence_check
                 )
@@ -613,7 +648,7 @@ class BioFuzzNet(DiGraph):
 
             for n in self.nodes():
                 output_tensor = last_states[0][n]
-                for i in range(length - 1):
+                for i in range(int(length) - 1):
                     output_tensor = output_tensor + last_states[i + 1][n]
                 output_tensor = output_tensor / length
                 self.nodes()[n]["output_state"] = output_tensor
@@ -633,7 +668,7 @@ class BioFuzzNet(DiGraph):
         epochs: int,
         batch_size: int,
         learning_rate: float,
-        loss_wrapper=weighted_loss,
+        loss_wrapper=None,
         loss_fcn=torch.nn.MSELoss(),
         loss_weights=None,
         optim_wrapper=torch.optim.Adam,
@@ -670,11 +705,13 @@ class BioFuzzNet(DiGraph):
         POSSIBLE UPDATES:
             - Allow tuning between AND and OR gates using backpropagation
         """
+
         torch.autograd.set_detect_anomaly(True)
         torch.set_default_tensor_type(torch.DoubleTensor)
         # Input nodes
         if self.root_nodes == []:
             input_nodes = [k for k in test_input.keys()]
+            print(f"There were no root nodes, {input_nodes} were used as input")
         else:
             input_nodes = self.root_nodes
 
@@ -686,20 +723,11 @@ class BioFuzzNet(DiGraph):
             dataset, batch_size=batch_size, shuffle=True
         )
 
-        # Create a dataset and dataloader for the test set
-        dataset_test = BioFuzzDataset(test_input, test_ground_truth)
-        dataloader_test = torch.utils.data.DataLoader(
-            dataset, batch_size=batch_size, shuffle=True
-        )
-
         # Keep track of the parameters
         parameters = []
         for edge in self.transfer_edges:
             layer = self.edges()[edge]["layer"]
             parameters += [layer.n, layer.K]
-
-        # Instantiate the model
-        self.initialise_random_truth_and_output(batch_size)
 
         # Set the parameters, leave possibility for other losses/solver
         if loss_weights is None:
@@ -711,10 +739,14 @@ class BioFuzzNet(DiGraph):
 
         for e in tqdm(range(epochs)):
 
+            # Instantiate the model
+            self.initialise_random_truth_and_output(batch_size)
+
             for X_batch, y_batch in dataloader:
                 # In this case we do not use X_batch explicitly, as we just need the ground truth state of each node.
-                # Reinitialise the network
-                self.initialise_random_truth_and_output(batch_size)
+                # Reinitialise the network at the right size
+                batch_keys = list(X_batch.keys())
+                self.initialise_random_truth_and_output(len(X_batch[batch_keys.pop()]))
                 # predict and compute the loss
                 self.set_network_ground_truth(ground_truth=y_batch)
                 # Simulate
@@ -723,13 +755,7 @@ class BioFuzzNet(DiGraph):
                 # Get the predictions
                 predictions = self.output_states
 
-                # Compute the loss
-                loss = loss_wrapper(
-                    loss_fcn,
-                    weight=loss_weights,
-                    predictions=predictions,
-                    ground_truth=y_batch,
-                )
+                loss = MSE_loss(predictions=predictions, ground_truth=y_batch)
 
                 # First reset then compute the gradients
                 optim.zero_grad()
@@ -754,20 +780,18 @@ class BioFuzzNet(DiGraph):
                     ignore_index=True,
                 )
             with torch.no_grad():
-                for X_test_batch, y_test_batch in dataloader_test:
-
-                    self.set_network_ground_truth(ground_truth=y_test_batch)
-                    # Simulation
-                    self.sequential_update(input_nodes)
-                    # Get the predictions
-                    predictions = self.output_states
-                    # Compute the loss
-                    test_loss = loss_wrapper(
-                        loss_fcn,
-                        weight=loss_weights,
-                        predictions=predictions,
-                        ground_truth=y_test_batch,
-                    )
+                # Instantiate the model
+                self.initialise_random_truth_and_output(
+                    len(test_ground_truth[input_nodes[0]])
+                )
+                self.set_network_ground_truth(ground_truth=test_ground_truth)
+                # Simulation
+                self.sequential_update(input_nodes)
+                # Get the predictions
+                predictions = self.output_states
+                test_loss = MSE_loss(
+                    predictions=predictions, ground_truth=test_ground_truth
+                )
 
                 # No need to detach since there are no gradients
                 losses = pd.concat(
@@ -784,4 +808,5 @@ class BioFuzzNet(DiGraph):
                     ],
                     ignore_index=True,
                 )
+
         return losses
