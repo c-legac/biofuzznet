@@ -8,7 +8,7 @@ import torch
 import networkx as nx
 from typing import Tuple
 from math import sqrt, exp
-import pandas as pd
+import warnings
 
 
 torch.set_default_tensor_type(torch.DoubleTensor)
@@ -64,19 +64,12 @@ def change_SIF_convention(filepath_in: str, filepath_out: str) -> None:
 
 
 def has_cycle(G: nx.DiGraph) -> Tuple[bool, list]:
-    cycle_list = []
-    has_cycle = False
-    for node in G.nodes():
-        try:
-            edges = nx.find_cycle(G, source=node, orientation="original")
-            cycle_nodes = [edges[i][0] for i in range(len(edges))]
-            cycle_nodes.sort()
-            if cycle_nodes not in cycle_list:
-                cycle_list.append(cycle_nodes)
-            has_cycle = True
-        except nx.NetworkXNoCycle:
-            continue
-    return (has_cycle, cycle_list)
+    warnings.warn(
+        "This function uses NetworkX's recursive_simple_cycles function which uses up a lot of RAM. The simple_cycles function was not used because it failed to detect cycles on a toy network"
+    )
+    cycle_list = list(nx.recursive_simple_cycles(G))
+    has_a_cycle = len(cycle_list) > 0
+    return (has_a_cycle, cycle_list)
 
 
 def dictionnary_to_tensor(output_dict):
@@ -123,7 +116,6 @@ def MSE_loss(predictions: dict, ground_truth: dict):
     # Then I average over the batch
     loss = torch.mean(loss)
     return loss
-
 
 
 def MSE_entropy_loss(predictions, ground_truth, mixed_gates_regularisation, gates):
@@ -220,7 +212,8 @@ def obtain_params(G) -> Tuple[dict, list, list]:
             list of values of K]
     """
     param_dict = {
-        e: [p.item() for p in G.edges()[e]["layer"].parameters()] for e in G.transfer_edges
+        e: [p.item() for p in G.edges()[e]["layer"].parameters()]
+        for e in G.transfer_edges
     }
     n = []
     K = []
@@ -308,25 +301,6 @@ def compute_relative_error(list_1: list, list_2: list):
     return relative_error
 
 
-def compute_R2_score(list_1: list, list_2: list):
-    """
-    Compute the R2 score between two same-length list of parameters
-    assuming list_2 = f(list_1) and that the true f should be identity.
-
-    Args:
-        list_1: x-axis
-        list_2: y-axis
-    Return:
-        R2-score between the elements of those 2 lists
-    """
-    # Assume the true model is identity, the residual sum of square is compared to f(x) = x
-    rss = sum([(list_2[i] - list_1[i]) ** 2 for i in range(len(list_1))])
-    tss = sum(
-        [(list_2[i] - sum(list_2) / len(list_2)) ** 2 for i in range(len(list_2))]
-    )
-    return 1 - rss / tss
-
-
 def compute_RMSE_outputs(model, ground_truth):
     """
     Compute the RMSE between the model output state and the ground truth
@@ -340,9 +314,7 @@ def compute_RMSE_outputs(model, ground_truth):
     rmse = {}
     for node in ground_truth.keys():
         rmse[node] = torch.sqrt(
-            torch.sum(
-                (model.output_states[node] - ground_truth[node]) ** 2
-            )
+            torch.sum((model.output_states[node] - ground_truth[node]) ** 2)
             / len(model.output_states[node])
         ).item()
     return rmse
@@ -371,28 +343,3 @@ def compute_relative_RMSE_outputs(model):
             / (torch.sum(model.output_states[node] ** 2))
         )
     return rrmse
-
-
-def compute_RRSE_outputs(model):
-    """
-    Compute the RRSE between the model output state and the ground truth
-
-    Args:
-        model, BioFuzzNet
-    Return:
-        a dictionnary of the Root Mean Squared Error between the the model output
-        state and the ground truth for each node
-    """
-    rrse = {}
-    for node in model.biological_nodes:
-        mean_val = torch.mean(model.output_states[node])
-        rrse[node] = torch.sqrt(
-            (
-                torch.sum(
-                    (model.output_states[node] - model.nodes()[node]["ground_truth"])
-                    ** 2
-                )
-            )
-            / (torch.sum((model.output_states[node] - mean_val) ** 2))
-        )
-    return rrse
