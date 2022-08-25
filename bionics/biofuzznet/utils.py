@@ -64,16 +64,25 @@ def change_SIF_convention(filepath_in: str, filepath_out: str) -> None:
 
 
 def has_cycle(G: nx.DiGraph) -> Tuple[bool, list]:
-    warnings.warn(
-        "This function uses NetworkX's recursive_simple_cycles function which uses up a lot of RAM. The simple_cycles function was not used because it failed to detect cycles on a toy network"
-    )
+    """
+    For a BioFuzzNet, returns a Tuple(boolean, list), where the boolean indicates whether this BioFuzzNet
+    contains a cycle, and the list is the list of cyles in the network, where each cycles is represented by
+    the list of its nodes composing each cycles. See the documentation for
+    networkX.recursive_simple_cycles.
+    WARNING: This function uses NetworkX's recursive_simple_cycles function which uses up a lot of RAM.
+     The simple_cycles function was not used because it failed to detect cycles on a toy network
+    Args:
+        - G: nx.DiGraph, or more specifically a BioFuzzNet
+    Returns:
+        - Tuple(bool, list): the boolean indicates whether this BioFuzzNet
+    contains a cycle, and the list is the list of nodes composing each cycles
+    """
     cycle_list = list(nx.recursive_simple_cycles(G))
     has_a_cycle = len(cycle_list) > 0
     return (has_a_cycle, cycle_list)
 
 
-def dictionnary_to_tensor(output_dict):
-    # The different nodes represent the different features of my model I think
+def dictionnary_to_tensor(output_dict) -> torch.Tensor:
     """
     Tranforms a dictionnary representing the output or ground truth of a BioFuzzNet
     into a tensor matrix of shape number_of_nodes * number_of_cells.
@@ -93,14 +102,15 @@ def dictionnary_to_tensor(output_dict):
     return matrix
 
 
-def MSE_loss(predictions: dict, ground_truth: dict):
-
+def MSE_loss(predictions: dict, ground_truth: dict) -> torch.Tensor:
     """
     Compute the MSE loss over all nodes of the network
     Args :
-    - predictions: dict mapping each node to its predicted value
-    - ground_truth: dict mapping each node to its ground_truth.
-         Unobserved nodes should not be present in ground truth.
+        - predictions: dict mapping each node to its predicted value
+        - ground_truth: dict mapping each node to its ground_truth.
+            Unobserved nodes should not be present in ground truth.
+    Returns:
+        - a torch.tensor containing the minibatch MSE loss over all observed nodes in ground_truth
     """
     # Remove unobserved nodes from the prediction
     predictions = {key: predictions[key] for key in ground_truth.keys()}
@@ -118,7 +128,7 @@ def MSE_loss(predictions: dict, ground_truth: dict):
     return loss
 
 
-def MSE_entropy_loss(predictions, ground_truth, mixed_gates_regularisation, gates):
+def MSE_entropy_loss(predictions, ground_truth, mixed_gates_regularisation, gates) -> torch.Tensor:
     """
     Compute a MSE loss mixed with a separate loss for regularising the MIXED gates in BioMixNets.
     Args:
@@ -127,6 +137,8 @@ def MSE_entropy_loss(predictions, ground_truth, mixed_gates_regularisation, gate
         - mixed_gates_regularisation: parameters for the regularisation of the mixed gates. If it has value p_reg, for each mixed gate,
             we add the value p_reg*AND_param*(1-AND_param)
         - gates: list of mixed gates in the network
+    Returns:
+        - a torch.tensor containing the minibatch MSE entropy loss over all observed nodes in ground_truth
     """
     mse_loss = MSE_loss(predictions=predictions, ground_truth=ground_truth)
     regularisation_loss = 0
@@ -139,26 +151,6 @@ def MSE_entropy_loss(predictions, ground_truth, mixed_gates_regularisation, gate
     loss = mse_loss + mixed_gates_regularisation * regularisation_loss
     return loss
 
-
-# Possibly deprecated
-def compute_state_difference(state_1: dict, state_2: dict):
-    """
-    For two BioFuzzNet states represented by dict,
-    compute the maximum over all nodes in those dict of the infinite norm
-    of the difference of the node state
-    ie: max_{n a node of the BioFuzzNet} (||state_1(node)-state_2(node)||)
-    where ||x - y|| = max_{i}( |x(i)-y(i)| for x and y two vectors)
-
-    Args:
-        state_1, state_2: dict mapping each node of a BioFuzzNet to a tensor
-        representing the current state of a node. They should have the same keys.
-    """
-    difference = {
-        key: torch.abs(torch.sub(state_1[key], state_2[key])) for key in state_1.keys()
-    }
-    max_diff_per_state = [torch.max(val).item() for val in difference.values()]
-    max_diff = max(max_diff_per_state)
-    return max_diff
 
 
 def draw_BioFuzzNet(
@@ -251,8 +243,8 @@ def compute_MSE(list_1: list, list_2: list):
     Squared error is computed between list_1[i] and list_2[i].
 
     Args:
-        list_1
-        list_2
+        - list_1: a list of values
+        - list_2: a list of values
     Return:
         Mean Squared Error between the elements of those 2 lists
     """
@@ -261,55 +253,16 @@ def compute_MSE(list_1: list, list_2: list):
     return sum(squared_error) / len(squared_error)
 
 
-def compute_relative_RMSE(list_1: list, list_2: list):
+def compute_RMSE_outputs(model, ground_truth) -> dict:
     """
-    Compute the relative RMSE between two same-length list of parameters.
-    Squared error is computed between list_1[i] and list_2[i]. list_1 is assumed
-    to contain the true parameters and list_2 the estimators
+    Compute the RMSE between the model's output states and the observed ground truth
 
     Args:
-        list_1
-        list_2
-    Return:
-        Relative Root Mean Squared Error between the elements of those 2 lists
-    """
-
-    mean_squared_error = sum(
-        [(list_1[i] - list_2[i]) ** 2 for i in range(len(list_1))]
-    ) / len(list_1)
-    return sqrt(mean_squared_error) / sqrt(
-        sum([list_2[i] ** 2 for i in range(len(list_2))])
-    )
-
-
-def compute_relative_error(list_1: list, list_2: list):
-    """
-    Compute the relative RMSE between two same-length list of parameters.
-    Squared error is computed between list_1[i] and list_2[i]. list_1 is assumed
-    to contain the true parameters and list_2 the estimators.
-
-    Args:
-        list_1
-        list_2
-    Return:
-        List of Relative Error for each element of those 2 lists
-    """
-
-    relative_error = [
-        sqrt((list_1[i] - list_2[i]) ** 2) / list_2[i] for i in range(len(list_1))
-    ]
-    return relative_error
-
-
-def compute_RMSE_outputs(model, ground_truth):
-    """
-    Compute the RMSE between the model output state and the ground truth
-
-    Args:
-        model, BioFuzzNet
-    Return:
-        a dictionnary of the Root Mean Squared Error between the the model output
-        state and the ground truth for each node
+        - model: a BioFuzzNet
+        - ground_truth: a dicitonnary mapping node names to observed values (represented by torch.Tensors)
+    Returns:
+        - a dictionnary of the Root Mean Squared Error between the the model's output
+        state and the ground truth for each node. Keys are the node names, values are the RMSE
     """
     rmse = {}
     for node in ground_truth.keys():
@@ -320,26 +273,3 @@ def compute_RMSE_outputs(model, ground_truth):
     return rmse
 
 
-def compute_relative_RMSE_outputs(model):
-    """
-    Compute the relative RMSE between the model output state and the ground truth
-
-    Args:
-        model, BioFuzzNet
-    Return:
-        a dictionnary of the Root Mean Squared Error between the the model output
-        state and the ground truth for each node
-    """
-    rrmse = {}
-    for node in model.biological_nodes:
-        rrmse[node] = torch.sqrt(
-            (
-                torch.sum(
-                    (model.output_states[node] - model.nodes()[node]["ground_truth"])
-                    ** 2
-                )
-                / len(model.output_states[node])
-            )
-            / (torch.sum(model.output_states[node] ** 2))
-        )
-    return rrmse
