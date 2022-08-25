@@ -8,6 +8,7 @@ ALL RIGHTS RESERVED
 """
 
 import torch
+
 torch.set_default_tensor_type(torch.DoubleTensor)
 # Create datasets and dataloader objects to iterate over batches of data
 
@@ -28,7 +29,8 @@ class BioFuzzDataset(torch.utils.data.Dataset):
         self.y = ground_truth_dict
 
     def __getitem__(self, i):
-        """For a given cell i, return two dictionnaries representing input and output values for a given cell.
+        """For a given cell i, return two dictionnaries representing input and output values.
+        NB: I'm not 100% sure this is the correct definition, I still have a bit of trouble understanding the Dataset structure
         Args:
             i: int indentifying a datapoint (a single cell) in the dataset
         Returns:

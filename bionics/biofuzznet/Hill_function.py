@@ -16,13 +16,21 @@ class HillTransferFunction(torch.nn.Module):
     """Apply a Hill transformation on 1D input"""
 
     def __init__(self):
+
+        """
+            Initialise the parameters if the transfer functino
+        """
         torch.nn.Module.__init__(self)
 
         self.n = torch.nn.Parameter(torch.normal(mean=0, std=0.75, size=(1,)))
         self.K = torch.nn.Parameter(torch.normal(mean=-0.5, std=0.75, size=(1,)))
 
     def forward(self, x):
-        """what gets called when you run mymodel(x)"""
+        """
+            Tranforms a value through the transfer function
+            Args:
+                x = value to be transformed
+        """
         # I want to constrain K and n to be positive
         # Hence I'll feed them into an exponential
         output = (x ** torch.exp(self.n)) / (

@@ -31,10 +31,13 @@ class BioFuzzNet(DiGraph):
     def __init__(self, nodes=None, edges=None):
         """
         Initialise a BioFuzzNet.
+        Logical AND gates should be prespecified in the nodes and edges list, by having a node name
+        containing _and_. Otherwise, for all nodes having more than 1 incoming edges, those edges
+        are assume to be linked together by an OR gate. 
 
         Args:
-            nodes: list of nodes of the network
-            edges: dict mapping tuple (upstraeam_edge, downstream_edge) to edge weight
+            - nodes: list of nodes of the network
+            - edges: dict mapping tuple (upstream_edge, downstream_edge) to edge weight
              (which should be 1 or -1)
 
         Default initialises an empty BioFuzzNet
@@ -143,7 +146,7 @@ class BioFuzzNet(DiGraph):
 
     """ The goal of those methods is to make sure the edges and nodes are added with the correct attributes"""
 
-    def add_simple_edge(self, upstream_node: str, downstream_node: str):
+    def add_simple_edge(self, upstream_node: str, downstream_node: str) -> None:
         """
         Add simple directed edge (without a transfer function) to the network
         Args:
@@ -166,7 +169,7 @@ class BioFuzzNet(DiGraph):
         self,
         upstream_node: str,
         downstream_node: str,
-    ):
+    ) -> None:
         """
         Add transfer directed edge (with a Hill transfer function) to the network
         Args:
@@ -200,7 +203,7 @@ class BioFuzzNet(DiGraph):
             weight=1,
         )
 
-    def add_fuzzy_node(self, node_name: str, type: str):
+    def add_fuzzy_node(self, node_name: str, type: str) -> None:
         """
         Add node to a BioFuzzNet
         Args:
@@ -255,9 +258,9 @@ class BioFuzzNet(DiGraph):
         """
         For use on a BioFUZZNet that is not yet fully implemented.
         Make sure that the structure of the DiGraph corresponds to the structure
-        enforced for BioFUZZNet is applied, by adding the OR gates where necessary.
+        enforced for the BioFuzzNet, by adding the OR gates where necessary.
         We assume that all AND gates have been resolved already, hence any nodes that
-        combines two inputs or more and is not registered as an ANG gate has to
+        combines two inputs or more and is not registered as an AND gate has to
         integrate those inputs through an OR gate.
         """
         or_counts = 1
@@ -297,13 +300,12 @@ class BioFuzzNet(DiGraph):
     @classmethod
     def build_BioFuzzNet_from_file(cls, filepath: str):
         """
-        An alternate constructor.
-        Initialize a Boolean network by creating the biological nodes, the edges, the logical gates, and initialising the state of the network.
+        An alternate constructor to build the BioFuzzNet from the sif file instead of the lists of ndoes and edges.
         AND gates should already be specified in the sif file, and should be named node1_and_node2 where node1 and node2 are the incoming nodes
 
 
         Args:
-            filepath: SIF file in tsv format [node1 edge_weight node2] if the network topology is contained in a file.
+            - filepath: SIF file in tsv format [node1 edge_weight node2] if the network topology is contained in a file.
                 If the file ha the format [node1 node2 edge_weight], then it can be converted in the desired format using  utils.change_SIF_convention
 
         """
@@ -317,6 +319,7 @@ class BioFuzzNet(DiGraph):
         Args:
             - batch_size: size of the tensor. All tensors will have the same size.
         NB: This is useful because output_state and ground_truth are set to None when adding nodes using self.add_fuzzy_node()
+            and having None values creates unwanted behavior when using mathematical operations (NaN propagates to non-NaN tensors)
         """
         for node_name in self.nodes():
             node = self.nodes()[node_name]
@@ -328,7 +331,8 @@ class BioFuzzNet(DiGraph):
 
     def set_network_ground_truth(self, ground_truth):
         """
-        Set the ground_truth of each biological node.
+        Set the ground_truth of each biological node. Throws a warning for each biological node
+        in the BioFuzzNet that is not observed
         Args:
             - ground_truth: a dict mapping the name of each biological node to a tensor representing its ground_truth.
         NB: No ground truth value is set for non-measured nodes, the loss function should thus be consequentially chosen
@@ -365,7 +369,6 @@ class BioFuzzNet(DiGraph):
         Transmits node state along an edge.
         If an edge is simple: then it returns the state at the upstream node. No computation occurs in this case.
         If an edge sports a transfer function: then it computes the transfer function and returns the transformed state.
-        This is different from the propagate_along_edge method in the bioboolnet module, in which no computation occur.
 
         Args:
             edge: The edge along which to propagate the state
@@ -457,12 +460,13 @@ class BioFuzzNet(DiGraph):
 
     def integrate_logical_node(self, node: str) -> torch.Tensor:
         """
-        A wrapper around integrate_NOT, integrate_OR and integrate_AND to integrate any logical node independent of the gate.
+        A wrapper around integrate_NOT, integrate_OR and integrate_AND to integrate the values
+        at any logical node independently of the gate.
 
         Args:
-            node: the name of the node representing the logical gate
+            - node: the name of the node representing the logical gate
         Returns:
-            The state at the logical gate after integration
+            - The state at the logical gate after integration
 
         """
         if self.nodes[node]["node_type"] == "logic_gate_AND":
@@ -514,7 +518,7 @@ class BioFuzzNet(DiGraph):
             graph has a directed cycle, and the list is the list of all directed cycles in the graph
             - convergence_check: default False. In case one wants to check convergence of the simulation
                  for a graph with a loop, this Boolean should be set to True, and output state of the one-step simulation will be saved and returned. This has however not been
-                 optimised for memory usage. Use with caution.
+                 optimised for time and memory usage. Use with caution.
         """
         if convergence_check:
             warnings.warn(
@@ -575,8 +579,8 @@ class BioFuzzNet(DiGraph):
                  in order to update parents before their children.
 
         Args:
-            input_nodes: Nodes for which the ground truth is known and used as input for simulation
-            convergence_check: default False. In case one wants to check convergence of the simulation
+            - input_nodes: Nodes for which the ground truth is known and used as input for simulation (usually root nodes)
+            - convergence_check: default False. In case one wants to check convergence of the simulation
                  for a graph with a loop, this Boolean should be set to True, and output states of the model
                  over the course of the simulation will be saved and returned. This has however not been
                  optimised for memory usage. Use with caution.
@@ -668,36 +672,32 @@ class BioFuzzNet(DiGraph):
         epochs: int,
         batch_size: int,
         learning_rate: float,
-        loss_wrapper=None,
-        loss_fcn=torch.nn.MSELoss(),
-        loss_weights=None,
         optim_wrapper=torch.optim.Adam,
     ):
 
         """
         The main function of this class.
         Optimise the tranfer function parameters in a FIXED topology with FIXED input gates.
-        For the moment, the optimizer is ADAM and the loss function is the sum of the MSELoss at each node.
+        For the moment, the optimizer is ADAM and the loss function is the MSELoss over all observed nodes (see utils.MSE_Loss)
         Method overview:
             The graph states are updated by traversing the graph from root node to leaf node (forward pass).
             The transfer function parameters are then updated using backpropagation.
             The use of backpropagation forces the use of a sequential update scheme.
 
         Args:
-            - input: dict of torch.Tensor mapping root nodes name to their input value (which is assumed to be their ground truth)
-            - ground_truth: training dict of {node_name: torch.Tensor} mapping each biological node to its measured values
-            - test_input: dict of torch.Tensor containing root nodes mapped the input validation data
-            - test_ground_truth:  dict of torch.Tensor mapping root nodes name to their validation value (which is assumed to be their ground truth)
+            - input: dict of torch.Tensor mapping root nodes name to their input value 
+                (which is assumed to also be their ground truth value, otherwise those nodes will never be fitted correctly)
+                It is assumed that every node in input is an input node that should be known to the model prior to simulation. 
+                Input nodes are then used as the start for the sequential update algorithm.
+                input should usually contain the value at root nodes, but in the case where the graph contains a cycle, 
+                other nodes can be specified.
+            - ground_truth: training dict of {node_name: torch.Tensor} mapping each observed biological node to its measured values
+                Only  the nodes present in ground_truth will be used to compute the loss/
+            - test_input: dict of torch.Tensor containing root node names mapped to the input validation data
+            - test_ground_truth:  dict of torch.Tensor mapping node names to their value from the validation set
             - epochs: number of epochs for optimisation
             - batch_size: batch size for optimisation
             - learning_rate : learning rate for optimisation with ADAM
-            - loss_wrapper: a wrapper function computing the loss. Default biofuzznet.utils.weighted_loss. It should take as argument:
-                - loss_fcn a loss function implemented in torch, used for computing the partial loss at each node
-                - weight: dict mapping each nodesto the weight to assign to its partial loss
-                - predictions: dict mapping each node to its predicted value
-                - ground_truth: dict mapping each node to its ground_truth. Unobserved nodes should not be present in ground truth.
-            - loss_fcn: a loss function representing the metric used inside the wrapper. Default torch.nn.MSELoss
-            - weights: a dictionnary mapping observed nodes to the weight they have in the computation of the global loss. Default: all nodes are observed with weight 1.
             - optim_wrapper: a wrapper function for the optimiser. It should take as argument:
                 - the parameters to optimise
                 - the learning rate
@@ -729,9 +729,6 @@ class BioFuzzNet(DiGraph):
             layer = self.edges()[edge]["layer"]
             parameters += [layer.n, layer.K]
 
-        # Set the parameters, leave possibility for other losses/solver
-        if loss_weights is None:
-            loss_weights = {n: 1 for n in self.biological_nodes}
         optim = optim_wrapper(parameters, learning_rate)
 
         # Train the model

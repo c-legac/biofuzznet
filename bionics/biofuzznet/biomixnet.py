@@ -27,7 +27,8 @@ class BioMixNet(BioFuzzNet):
     """
     This class implements a BioFuzzNet whose logical gates are a linear combination of AND and OR gates.
     AND and OR gates can still be implemented, but the default initialisation of a BioMixNet set all gates
-        to MIXED status
+        to MIXED status. Gates that should not be MIXED need to be manually changed to the correct node_type after
+        initialisation of the network.
     """
 
     def __init__(
@@ -43,8 +44,8 @@ class BioMixNet(BioFuzzNet):
             nodes: list of nodes of the network
             edges: dict mapping tuples (upstream_node, downstream_node) to edge weight (which should be 1 or -1)
             AND_param: value at which to initialise the weight for an AND gates at the MIXED gates. It needs to be
-                sigma^(-1) of the desired value since where sigma is the sigmoid function (see implemetation
-                of the MixedGate clss)
+                sigma^(-1) of the desired value since where sigma is the sigmoid function (see implementation
+                of the MixedGate class). Default is 0 since sigma(0) = 0.5 (equal weight of the AND and OR gate)
                 OR_param, the value at which the weight for an OR gates should be initialised at the MIXED gates,
                     is assumed to be 1 - AND_param
         """
@@ -60,11 +61,22 @@ class BioMixNet(BioFuzzNet):
                 )
 
     def build_BioMixNet_from_file(filepath: str):
+        """
+        An alternate constructor to build the BioMixNet from the sif file instead of the lists of ndoes and edges.
+        AND gates should already be specified in the sif file, and should be named node1_and_node2 where node1 and node2 are the incoming nodes
+
+
+        Args:
+            - filepath: SIF file in tsv format [node1 edge_weight node2] if the network topology is contained in a file.
+                If the file ha the format [node1 node2 edge_weight], then it can be converted in the desired format using  utils.change_SIF_convention
+
+        """
         nodes, edges = read_sif(filepath)
         return BioMixNet(nodes, edges)
 
     @property
     def mixed_gates(self):
+        """Return the list of MIXED gates names in the network"""
         mixed_gates = [
             node
             for node, attributes in self.nodes(data=True)
@@ -139,9 +151,6 @@ class BioMixNet(BioFuzzNet):
         epochs: int,
         batch_size: int,
         learning_rate: float,
-        loss_wrapper=None,
-        loss_fcn=torch.nn.MSELoss(),
-        loss_weights=None,
         mixed_gates_regularisation=1.0,
         optim_wrapper=torch.optim.Adam,
     ):
@@ -158,30 +167,25 @@ class BioMixNet(BioFuzzNet):
             The use of backpropagation forces the use of a sequential update scheme.
 
         Args:
-            - input: dict of torch.Tensor mapping root nodes name to their input value (which is assumed to be their ground truth)
-            - ground_truth: training dict of {node_name: torch.Tensor} mapping each biological node to its measured values
-            - test_input: dict of torch.Tensor containing root nodes mapped the input validation data
-            - test_ground_truth:  dict of torch.Tensor mapping root nodes name to their validation value (which is assumed to be their ground truth)
+            - input: dict of torch.Tensor mapping root nodes name to their input value
+                (which is assumed to also be their ground truth value, otherwise those nodes will never be fitted correctly)
+                It is assumed that every node in input is an input node that should be known to the model prior to simulation.
+                Input nodes are then used as the start for the sequential update algorithm.
+                input should usually contain the value at root nodes, but in the case where the graph contains a cycle,
+                other nodes can be specified.
+            - ground_truth: training dict of {node_name: torch.Tensor} mapping each observed biological node to its measured values
+                Only  the nodes present in ground_truth will be used to compute the loss/
+            - test_input: dict of torch.Tensor containing root node names mapped to the input validation data
+            - test_ground_truth:  dict of torch.Tensor mapping node names to their value from the validation set
             - epochs: number of epochs for optimisation
             - batch_size: batch size for optimisation
             - learning_rate : learning rate for optimisation with ADAM
-            # Here I don't think the loss_wrapper is well implemented since I changed it between the BioFuzzNet and the BioMixNet to
-            accomodate the change in loss
-            - loss_wrapper: a wrapper function computing the loss. Default biofuzznet.utils.weighted_and_mixed_loss. It should take as argument:
-                - loss_fcn a loss function implemented in torch, used for computing the partial loss at each node
-                - weight: dict mapping each nodesto the weight to assign to its partial loss
-                - predictions: dict mapping each node to its predicted value
-                - ground_truth: dict mapping each node to its ground_truth. Unobserved nodes should not be present in ground truth.
-                - gates: a list of MIXED gates to incorporate into the loss function
-                - mixed_gates_regularisation: a float representing regularisation strength at the MIXED gates
-            - loss_fcn: a loss function representing the metric used inside the wrapper. Default torch.nn.MSELoss
-            - weights: a dictionnary mapping observed nodes to the weight they have in the computation of the global loss. Default: all nodes are observed with weight 1.
-            - mixed_gates_regularisation: a float representing regularisation strength at the MIXED gates. Default 1.
+        - mixed_gates_regularisation: a float representing regularisation strength at the MIXED gates. Default 1.
             - optim_wrapper: a wrapper function for the optimiser. It should take as argument:
                 - the parameters to optimise
                 - the learning rate
 
-          """
+        """
         torch.autograd.set_detect_anomaly(True)
         torch.set_default_tensor_type(torch.DoubleTensor)
         # Input nodes
