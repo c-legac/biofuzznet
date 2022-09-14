@@ -1,13 +1,53 @@
-# README
+# BioFuzzNet
 
-The intent of this file is to provide a desription of how a BioFuzzNet is implemented and why those implementation choices were made.
+Fuzzy Logical Networks for Biological Systems. Optimized with stochastic gradient descent.
+
+## Environment
+Using a virtual environment for all commands in this guide is strongly recommended.
+
+## Installation
+
+### Package installation
+```sh
+# assuming you have an SSH key set up on GitHub
+pip install "git+ssh://git@github.ibm.com/DEU/biofuzznet.git@main"
+```
+
+### Suggested setup for development
+```sh
+pip install --upgrade pip setuptools wheel
+pip install -r requirements.txt
+pip install -r dev_requirements.txt
+pip install -e .
+pre-commit install
+```
+
+## Usage
+...
+
+## Contributing
+
+Check [CONTRIBUTING.md](.github/CONTRIBUTING.md).
+
+## Getting support
+
+Check [SUPPORT.md](.github/SUPPORT.md).
+
+## Credits
+This project was created using https://github.ibm.com/HCLS-innersource/python-blueprint.
+
+
+
+# Technical details
+
+The intent of this section is to provide a description of how a BioFuzzNet is implemented and why those implementation choices were made.
 
 Examples on the use of the BioFuzzNet can be found in the notebooks and code situated in Box > SysBio > projects > ENLIGH TEN + > Constance > Useful data.
 A more precise description of the algorithms can be found in my thesis in SysBio > theses > master_students_initern > Constance LE GAC
 
 ## General description of a BioFuzzNet
 
-A BioFuzzNet is an object encoding a Boolean network (assumed to represent a biological system, although any Boolean network can be used) and supporting a fuzzy logic formalism. 
+A BioFuzzNet is an object encoding a Boolean network (assumed to represent a biological system, although any Boolean network can be used) and supporting a fuzzy logic formalism.
 
 ### Graphical structure of a BioFuzzNet
 
@@ -15,10 +55,10 @@ A BioFuzzNet is at its core a networkx DiGraph with different types of nodes and
 Nodes can be of four types:
     * Biological nodes represent biological entities, or "real" nodes, that is the species that are modelled
     * Logical nodes can be of three types: AND, OR, or NOT. The logical operations correspond to the fuzzy equivalent of the usual Boolean logic operations. More information on those operations can be found by looking for "fuzzy logic operators" or "Zadeh logic operators".
-        * NOT gates must have an in-degree of one and implement a fuzzy logic negation given by output = 1 - input. 
+        * NOT gates must have an in-degree of one and implement a fuzzy logic negation given by output = 1 - input.
         * AND gates must have an in-degree of two and implement a fuzzy logic conjunction. If i1 and i2 are the two inputs, the output of the AND gate is given by $output = i1 * i2$
         * OR gates must have an in-degree of two and implement a fuzzy logic disjunction. If i1 and i2 are the two inputs, the output of the OR gate is given by $output = (i1 + i2)- i1 * i2$
-    
+
 Edges can be of two types. There are always positive, as negations are encoded through the NOT gates:
     * Simple edges which merely transmit the output state of the updstream node to the downstream node. Those always have a logical node as an upstream node and can have a logical or biological node as a downstream node
     * Transfer edges which transform the output of the upstream node through a transfer function before transmitting it to the downstream node. Those always have a biological node as an upstream node, and can have a logical or biological node as an upstream node.
@@ -26,7 +66,7 @@ The rationale behind this choice is that the Hill functions model the way the bi
 
 ### Structure of the Hill functions
 
-Non-normalized Hill functions were chosen to act as transfer functions. Hill functions were chosen at they are known to be acceptable mathematical representations for a range of biological phenomena. 
+Non-normalized Hill functions were chosen to act as transfer functions. Hill functions were chosen at they are known to be acceptable mathematical representations for a range of biological phenomena.
 Each transfer function has two parameters:
     * n is the Hill cooperativity coefficient. It represents the steepness of the curve and is always positive.
     * K is the EC50 coefficient and represent the concentration of input at which 50 \% of the maximum response is used.
@@ -39,7 +79,7 @@ As logical nodes cannot be measured, they only contain an output_state tensor.
 
 ## Simulation and Optimisation of a BioFuzzNet
 
-The parameters of the Hill functions are tuned using a gradient-descent based optimisation. As an automatic differentiation engine is used to compute ythe gradient, it is necessary that all operations during the simulation and optimisation process stay differentiable. This is why the BioFuzzNet is simulated using a sequential update mechanism in which the network is traversed from root nodes to leaf nodes. 
+The parameters of the Hill functions are tuned using a gradient-descent based optimisation. As an automatic differentiation engine is used to compute ythe gradient, it is necessary that all operations during the simulation and optimisation process stay differentiable. This is why the BioFuzzNet is simulated using a sequential update mechanism in which the network is traversed from root nodes to leaf nodes.
 The simulation process needs as input the values of the most upstream nodes in the network, and at least all the root nodes. Other nodes are then updated after their parents, in a manner similar to a Breadth-First Search. In cases where the network contains a cycle, at least one node in the cycle will need to be updated before all of its parents are updated. In this case, the loop is iterated through several times. An average of the last k predictions (where k is proportional to the length of the largest loop in the network) is then used as the predicted value.
 
 ADAM is the chosen optimiser, and the loss function is the mean squared error between predicted and observed values at nodes.
@@ -57,4 +97,3 @@ where $\{\alpha\}_{i=1}^m$ are the MIXED gate coefficients, and $C_{reg}$ is a r
 
 
 After optimisation, the value of the $\alpha$ parameter indicates the type of the optimised gate: if it's 1 then it's an AND gate, it it's 0 then it's an OR gate, if it's close to neither of those then the gate could not be tuned.
-
