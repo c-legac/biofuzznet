@@ -8,9 +8,9 @@ ALL RIGHTS RESERVED
 # modules defined in biofuzznet/
 # Pylance throws a reportMissingImports but thos actually works.
 
-from bionics.biofuzznet.utils import has_cycle, read_sif, MSE_loss  # , weighted_loss
-from bionics.biofuzznet.Hill_function import HillTransferFunction
-from bionics.biofuzznet.biofuzzdataset import BioFuzzDataset
+from biofuzznet.utils import has_cycle, read_sif, MSE_loss  # , weighted_loss
+from biofuzznet.Hill_function import HillTransferFunction
+from biofuzznet.biofuzzdataset import BioFuzzDataset
 
 
 # external python modules

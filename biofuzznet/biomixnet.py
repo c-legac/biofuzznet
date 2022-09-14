@@ -6,13 +6,13 @@ ALL RIGHTS RESERVED
 """
 # modules defined in biofuzznet/
 # Pylance throws a reportMissingImports but thos actually works.
-from bionics.biofuzznet.utils import (
+from biofuzznet.utils import (
     MSE_entropy_loss,
     read_sif,
 )  # weighted_and_mixed_loss
-from bionics.biofuzznet.biofuzznet import BioFuzzNet
-from bionics.biofuzznet.biofuzzdataset import BioFuzzDataset
-from bionics.biofuzznet.mixed_gate import MixedGate
+from biofuzznet.biofuzznet import BioFuzzNet
+from biofuzznet.biofuzzdataset import BioFuzzDataset
+from biofuzznet.mixed_gate import MixedGate
 import warnings
 
 # external python modules
