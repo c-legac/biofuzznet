@@ -10,7 +10,7 @@ Using a virtual environment for all commands in this guide is strongly recommend
 ### Package installation
 ```sh
 # assuming you have an SSH key set up on GitHub
-pip install "git+ssh://git@github.ibm.com/DEU/biofuzznet.git@main"
+pip install "git+ssh://git@github.com/ibm/biofuzznet.git@main"
 ```
 
 ### Suggested setup for development
@@ -33,17 +33,11 @@ Check [CONTRIBUTING.md](.github/CONTRIBUTING.md).
 
 Check [SUPPORT.md](.github/SUPPORT.md).
 
-## Credits
-This project was created using https://github.ibm.com/HCLS-innersource/python-blueprint.
-
-
-
 # Technical details
 
 The intent of this section is to provide a description of how a BioFuzzNet is implemented and why those implementation choices were made.
 
-Examples on the use of the BioFuzzNet can be found in the notebooks and code situated in Box > SysBio > projects > ENLIGH TEN + > Constance > Useful data.
-A more precise description of the algorithms can be found in my thesis in SysBio > theses > master_students_initern > Constance LE GAC
+A more precise description of the algorithms is available in the MSc thesis of Constance Le Gac at ETHZ (link when available).
 
 ## General description of a BioFuzzNet
 
