@@ -548,10 +548,10 @@ class BioFuzzNet(DiGraph):
                                 break
                     # Now non_updated_parents only contains parents that are not part of a loop to which curr_node belongs
                     if non_updated_parents != []:
-                                can_update = False
-                                for p in non_updated_parents:
-                                    current_nodes.qppend(p)
-                else: # If all node parents are updated then no problem
+                        can_update = False
+                        for p in non_updated_parents:
+                            current_nodes.qppend(p)
+                else:  # If all node parents are updated then no problem
                     can_update = True
                 if not can_update:
                     # Then we reappend the current visited node
