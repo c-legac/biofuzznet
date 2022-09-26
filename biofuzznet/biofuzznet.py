@@ -539,19 +539,25 @@ class BioFuzzNet(DiGraph):
                 non_updated_parents = [
                     p for p in self.predecessors(curr_node) if p in non_updated_nodes
                 ]
+
                 # Check if parents are updated
                 if non_updated_parents != []:
-                    can_update = True
                     for p in non_updated_parents:
-                        # Check if the parent is in the loop
+                        # Check if there is a loop to which both the parent and the current node belong
                         for cycle in loop_status[1]:
-                            if curr_node in cycle and p not in cycle:
-                                # Then we need to update p first
-                                current_nodes.append(p)
+                            if curr_node in cycle and p in cycle:
+                                # Then we will need to update curr_node without updating its parent
+                                non_updated_parents.remove(p)
+                                break
+                    # Now non_updated_parents only contains parents that are not part of a loop to which curr_node belongs
+                    if non_updated_parents != []:
                                 can_update = False
-                else:
+                                for p in non_updated_parents:
+                                    current_nodes.qppend(p)
+                else: # If all node parents are updated then no problem
                     can_update = True
                 if not can_update:
+                    # Then we reappend the current visited node
                     current_nodes.append(curr_node)
                 else:
                     self.update_fuzzy_node(curr_node, input_nodes)
