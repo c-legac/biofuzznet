@@ -20,7 +20,7 @@ import pandas as pd
 from tqdm import tqdm
 from datetime import datetime
 import copy
-from typing import Optional
+from typing import Optional, List
 import warnings
 
 
@@ -31,9 +31,9 @@ class BioFuzzNet(DiGraph):
     def __init__(self, nodes=None, edges=None):
         """
         Initialise a BioFuzzNet.
-        Logical AND gates should be prespecified in the nodes and edges list, by having a node name
+        Logical AND gates should be defined in the nodes and edges list, by having a node name
         containing _and_. Otherwise, for all nodes having more than 1 incoming edges, those edges
-        are assume to be linked together by an OR gate. 
+        are assumed to be linked together by an OR gate
 
         Args:
             - nodes: list of nodes of the network
@@ -495,7 +495,7 @@ class BioFuzzNet(DiGraph):
         else:  # For a root edge
             return self.nodes()[node]["ground_truth"]
 
-    def update_fuzzy_node(self, node: str) -> None:
+    def update_fuzzy_node(self, node: str, input_nodes: List) -> None:
         """
         A wrapper to call the correct updating function depending on the type of the node.
         Args:
@@ -503,7 +503,10 @@ class BioFuzzNet(DiGraph):
         """
         node_type = self.nodes()[node]["node_type"]
         if node_type == "biological":
-            self.nodes()[node]["output_state"] = self.update_biological_node(node)
+            if node in input_nodes:
+                self.nodes()[node]["output_state"] = self.nodes()[node]["ground_truth"]
+            else:
+                self.nodes()[node]["output_state"] = self.update_biological_node(node)
         else:
             self.nodes()[node]["output_state"] = self.integrate_logical_node(node)
 
@@ -531,7 +534,7 @@ class BioFuzzNet(DiGraph):
             # curr_nodes is a queue, hence FIFO (first in first out)
             # when popping the first item, we obtain the one that has been in the queue the longest
             curr_node = current_nodes.pop(0)
-            # If the not has not yet been updated
+            # If the node has not yet been updated
             if curr_node in non_updated_nodes:
                 non_updated_parents = [
                     p for p in self.predecessors(curr_node) if p in non_updated_nodes
@@ -551,7 +554,7 @@ class BioFuzzNet(DiGraph):
                 if not can_update:
                     current_nodes.append(curr_node)
                 else:
-                    self.update_fuzzy_node(curr_node)
+                    self.update_fuzzy_node(curr_node, input_nodes)
                     non_updated_nodes.remove(curr_node)
                     cont = True
                     while cont:
@@ -606,7 +609,7 @@ class BioFuzzNet(DiGraph):
 
                 # curr_nodes is FIFO
                 curr_node = current_nodes.pop(0)
-                # If the not has not yet been updated
+                # If the node has not yet been updated
                 if curr_node in non_updated_nodes:
                     parents = [pred for pred in self.predecessors(curr_node)]
                     non_updated_parents = [p for p in parents if p in non_updated_nodes]
@@ -618,7 +621,7 @@ class BioFuzzNet(DiGraph):
                         current_nodes.append(curr_node)
                     # If all parents are updated, then we update
                     else:
-                        self.update_fuzzy_node(curr_node)
+                        self.update_fuzzy_node(curr_node, input_nodes)
                         non_updated_nodes.remove(curr_node)
                         cont = True
                         while cont:
@@ -673,6 +676,7 @@ class BioFuzzNet(DiGraph):
         batch_size: int,
         learning_rate: float,
         optim_wrapper=torch.optim.Adam,
+        use_root_nodes: bool = False,
     ):
 
         """
@@ -685,11 +689,11 @@ class BioFuzzNet(DiGraph):
             The use of backpropagation forces the use of a sequential update scheme.
 
         Args:
-            - input: dict of torch.Tensor mapping root nodes name to their input value 
+            - input: dict of torch.Tensor mapping root nodes name to their input value
                 (which is assumed to also be their ground truth value, otherwise those nodes will never be fitted correctly)
-                It is assumed that every node in input is an input node that should be known to the model prior to simulation. 
+                It is assumed that every node in input is an input node that should be known to the model prior to simulation.
                 Input nodes are then used as the start for the sequential update algorithm.
-                input should usually contain the value at root nodes, but in the case where the graph contains a cycle, 
+                input should usually contain the value at root nodes, but in the case where the graph contains a cycle,
                 other nodes can be specified.
             - ground_truth: training dict of {node_name: torch.Tensor} mapping each observed biological node to its measured values
                 Only  the nodes present in ground_truth will be used to compute the loss/
@@ -709,11 +713,11 @@ class BioFuzzNet(DiGraph):
         torch.autograd.set_detect_anomaly(True)
         torch.set_default_tensor_type(torch.DoubleTensor)
         # Input nodes
-        if self.root_nodes == []:
+        if use_root_nodes:
+            input_nodes = self.root_nodes
+        else:
             input_nodes = [k for k in test_input.keys()]
             print(f"There were no root nodes, {input_nodes} were used as input")
-        else:
-            input_nodes = self.root_nodes
 
         # Instantiate the dataset
         dataset = BioFuzzDataset(input, ground_truth)
