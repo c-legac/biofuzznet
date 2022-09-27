@@ -40,17 +40,17 @@ except FileNotFoundError:
 
 # TODO: Update these values according to the name of the module.
 setup(
-    name="bionics",
-    version=read_version("bionics/__init__.py"),  # single place for version
-    description="Learning cell characteristics from signalling networks and sc measurements",
+    name="biofuzznet",
+    version=read_version("biofuzznet/__init__.py"),  # single place for version
+    description="Fuzzy logic network modelling for single cell data",
     long_description=open("README.md").read(),
-    url="https://github.ibm.com/SysBio/BioNICs",
-    author="Alice Driessen",
+    url="https://github.com/IBM/biofuzznet",
+    author="Constance Le Gac, Alice Driessen, Nicolas Deutschmann",
     author_email="adr@zurich.ibm.com",
     # the following exclusion is to prevent shipping of tests.
     # if you do include them, add pytest to the required packages.
     packages=find_packages(".", exclude=["*tests*"]),
-    package_data={"bionics": ["py.typed"]},
+    package_data={"biofuzznet": ["py.typed"]},
     # entry_points=""" """,
     # scripts=[" "],
     extras_require={
