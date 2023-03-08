@@ -33,7 +33,7 @@ class BioFuzzNet(DiGraph):
         Initialise a BioFuzzNet.
         Logical AND gates should be prespecified in the nodes and edges list, by having a node name
         containing _and_. Otherwise, for all nodes having more than 1 incoming edges, those edges
-        are assume to be linked together by an OR gate. 
+        are assume to be linked together by an OR gate.
 
         Args:
             - nodes: list of nodes of the network
@@ -300,7 +300,7 @@ class BioFuzzNet(DiGraph):
     @classmethod
     def build_BioFuzzNet_from_file(cls, filepath: str):
         """
-        An alternate constructor to build the BioFuzzNet from the sif file instead of the lists of ndoes and edges.
+        An alternate constructor to build the BioFuzzNet from the sif file instead of the lists of nodes and edges.
         AND gates should already be specified in the sif file, and should be named node1_and_node2 where node1 and node2 are the incoming nodes
 
 
@@ -531,7 +531,7 @@ class BioFuzzNet(DiGraph):
             # curr_nodes is a queue, hence FIFO (first in first out)
             # when popping the first item, we obtain the one that has been in the queue the longest
             curr_node = current_nodes.pop(0)
-            # If the not has not yet been updated
+            # If the node has not yet been updated
             if curr_node in non_updated_nodes:
                 can_update = False
                 non_updated_parents = [
@@ -551,7 +551,7 @@ class BioFuzzNet(DiGraph):
                         can_update = False
                         for p in non_updated_parents:
                             current_nodes.append(p)
-                    else: 
+                    else:
                         can_update = True
                     # The parents that were removed will be updated later as they are still part of non_updated nodes
                 else:  # If all node parents are updated then no problem
@@ -559,7 +559,7 @@ class BioFuzzNet(DiGraph):
                 if not can_update:
                     # Then we reappend the current visited node
                     current_nodes.append(curr_node)
-                else: # Here we can update
+                else:  # Here we can update
                     self.update_fuzzy_node(curr_node)
                     non_updated_nodes.remove(curr_node)
                     cont = True
@@ -683,7 +683,6 @@ class BioFuzzNet(DiGraph):
         learning_rate: float,
         optim_wrapper=torch.optim.Adam,
     ):
-
         """
         The main function of this class.
         Optimise the tranfer function parameters in a FIXED topology with FIXED input gates.
@@ -694,11 +693,11 @@ class BioFuzzNet(DiGraph):
             The use of backpropagation forces the use of a sequential update scheme.
 
         Args:
-            - input: dict of torch.Tensor mapping root nodes name to their input value 
+            - input: dict of torch.Tensor mapping root nodes name to their input value
                 (which is assumed to also be their ground truth value, otherwise those nodes will never be fitted correctly)
-                It is assumed that every node in input is an input node that should be known to the model prior to simulation. 
+                It is assumed that every node in input is an input node that should be known to the model prior to simulation.
                 Input nodes are then used as the start for the sequential update algorithm.
-                input should usually contain the value at root nodes, but in the case where the graph contains a cycle, 
+                input should usually contain the value at root nodes, but in the case where the graph contains a cycle,
                 other nodes can be specified.
             - ground_truth: training dict of {node_name: torch.Tensor} mapping each observed biological node to its measured values
                 Only  the nodes present in ground_truth will be used to compute the loss/
@@ -744,7 +743,6 @@ class BioFuzzNet(DiGraph):
         losses = pd.DataFrame(columns=["time", "loss", "phase"])
 
         for e in tqdm(range(epochs)):
-
             # Instantiate the model
             self.initialise_random_truth_and_output(batch_size)
 
