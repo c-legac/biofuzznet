@@ -766,6 +766,7 @@ class BioFuzzNet(DiGraph):
                 predictions = self.output_states
 
                 loss = MSE_loss(predictions=predictions, ground_truth=y_batch)
+                print(loss)
 
                 # First reset then compute the gradients
                 optim.zero_grad()
