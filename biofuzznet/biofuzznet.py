@@ -744,7 +744,6 @@ class BioFuzzNet(DiGraph):
         losses = pd.DataFrame(columns=["time", "loss", "phase"])
 
         for e in tqdm(range(epochs)):
-
             # Instantiate the model
             self.initialise_random_truth_and_output(batch_size)
 
