@@ -20,7 +20,7 @@ import pandas as pd
 from tqdm import tqdm
 from datetime import datetime
 import copy
-from typing import Optional, List
+from typing import Optional
 import warnings
 
 
@@ -495,7 +495,7 @@ class BioFuzzNet(DiGraph):
         else:  # For a root edge
             return self.nodes()[node]["ground_truth"]
 
-    def update_fuzzy_node(self, node: str, input_nodes: List) -> None:
+    def update_fuzzy_node(self, node: str) -> None:
         """
         A wrapper to call the correct updating function depending on the type of the node.
         Args:
@@ -503,10 +503,7 @@ class BioFuzzNet(DiGraph):
         """
         node_type = self.nodes()[node]["node_type"]
         if node_type == "biological":
-            if node in input_nodes:
-                self.nodes()[node]["output_state"] = self.nodes()[node]["ground_truth"]
-            else:
-                self.nodes()[node]["output_state"] = self.update_biological_node(node)
+            self.nodes()[node]["output_state"] = self.update_biological_node(node)
         else:
             self.nodes()[node]["output_state"] = self.integrate_logical_node(node)
 
@@ -621,7 +618,7 @@ class BioFuzzNet(DiGraph):
                         current_nodes.append(curr_node)
                     # If all parents are updated, then we update
                     else:
-                        self.update_fuzzy_node(curr_node, input_nodes)
+                        self.update_fuzzy_node(curr_node)
                         non_updated_nodes.remove(curr_node)
                         cont = True
                         while cont:
@@ -676,7 +673,6 @@ class BioFuzzNet(DiGraph):
         batch_size: int,
         learning_rate: float,
         optim_wrapper=torch.optim.Adam,
-        use_root_nodes: bool = False,
     ):
 
         """
@@ -713,11 +709,11 @@ class BioFuzzNet(DiGraph):
         torch.autograd.set_detect_anomaly(True)
         torch.set_default_tensor_type(torch.DoubleTensor)
         # Input nodes
-        if use_root_nodes:
-            input_nodes = self.root_nodes
-        else:
+        if self.root_nodes == []:
             input_nodes = [k for k in test_input.keys()]
             print(f"There were no root nodes, {input_nodes} were used as input")
+        else:
+            input_nodes = self.root_nodes
 
         # Instantiate the dataset
         dataset = BioFuzzDataset(input, ground_truth)
