@@ -300,7 +300,7 @@ class BioFuzzNet(DiGraph):
     @classmethod
     def build_BioFuzzNet_from_file(cls, filepath: str):
         """
-        An alternate constructor to build the BioFuzzNet from the sif file instead of the lists of ndoes and edges.
+        An alternate constructor to build the BioFuzzNet from the sif file instead of the lists of nodes and edges.
         AND gates should already be specified in the sif file, and should be named node1_and_node2 where node1 and node2 are the incoming nodes
 
 
@@ -683,7 +683,6 @@ class BioFuzzNet(DiGraph):
         learning_rate: float,
         optim_wrapper=torch.optim.Adam,
     ):
-
         """
         The main function of this class.
         Optimise the tranfer function parameters in a FIXED topology with FIXED input gates.
