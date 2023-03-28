@@ -7,8 +7,7 @@ ALL RIGHTS RESERVED
 import torch
 import networkx as nx
 from typing import Tuple
-from math import sqrt, exp
-import warnings
+from math import exp
 
 
 torch.set_default_tensor_type(torch.DoubleTensor)
@@ -120,15 +119,19 @@ def MSE_loss(predictions: dict, ground_truth: dict) -> torch.Tensor:
     # Compute the squared loss without any reduction
     mse_loss = torch.nn.MSELoss(reduction="none")
     squared_loss = mse_loss(predictions, ground_truth)
+
     # Then I can average however I want
     # I will then average over the network nodes
     loss = torch.mean(squared_loss, 0)
+
     # Then I average over the batch
     loss = torch.mean(loss)
     return loss
 
 
-def MSE_entropy_loss(predictions, ground_truth, mixed_gates_regularisation, gates) -> torch.Tensor:
+def MSE_entropy_loss(
+    predictions, ground_truth, mixed_gates_regularisation, gates
+) -> torch.Tensor:
     """
     Compute a MSE loss mixed with a separate loss for regularising the MIXED gates in BioMixNets.
     Args:
@@ -150,7 +153,6 @@ def MSE_entropy_loss(predictions, ground_truth, mixed_gates_regularisation, gate
 
     loss = mse_loss + mixed_gates_regularisation * regularisation_loss
     return loss
-
 
 
 def draw_BioFuzzNet(
@@ -271,5 +273,3 @@ def compute_RMSE_outputs(model, ground_truth) -> dict:
             / len(model.output_states[node])
         ).item()
     return rmse
-
-
