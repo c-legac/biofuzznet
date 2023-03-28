@@ -40,17 +40,19 @@ except FileNotFoundError:
 
 # TODO: Update these values according to the name of the module.
 setup(
-    name="biofuzznet",
-    version=read_version("biofuzznet/__init__.py"),  # single place for version
+    name="biological_fuzzy_logic_networks",
+    version=read_version(
+        "biological_fuzzy_logic_networks/__init__.py"
+    ),  # single place for version
     description="Fuzzy logic network modelling for single cell data",
     long_description=open("README.md").read(),
-    url="https://github.com/IBM/biofuzznet",
+    url="https://github.com/IBM/biological_fuzzy_logic_networks",
     author="Constance Le Gac, Alice Driessen, Nicolas Deutschmann",
     author_email="adr@zurich.ibm.com",
     # the following exclusion is to prevent shipping of tests.
     # if you do include them, add pytest to the required packages.
     packages=find_packages(".", exclude=["*tests*"]),
-    package_data={"biofuzznet": ["py.typed"]},
+    package_data={"biological_fuzzy_logic_networks": ["py.typed"]},
     # entry_points=""" """,
     # scripts=[" "],
     extras_require={

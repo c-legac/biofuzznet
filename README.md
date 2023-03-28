@@ -1,4 +1,4 @@
-# BioFuzzNet
+# biological_fuzzy_logic_networks (BioFuzzNet)
 
 Fuzzy Logical Networks for Biological Systems. Optimized with stochastic gradient descent.
 
@@ -10,7 +10,7 @@ Using a virtual environment for all commands in this guide is strongly recommend
 ### Package installation
 ```sh
 # assuming you have an SSH key set up on GitHub
-pip install "git+ssh://git@github.com/ibm/biofuzznet.git@main"
+pip install "git+ssh://git@github.com/ibm/biological_fuzzy_logic_networks.git@main"
 ```
 
 ### Suggested setup for development
