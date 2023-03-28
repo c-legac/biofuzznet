@@ -153,6 +153,7 @@ class BioMixNet(BioFuzzNet):
         learning_rate: float,
         mixed_gates_regularisation=1.0,
         optim_wrapper=torch.optim.Adam,
+        loss_weights=None,
     ):
 
         """

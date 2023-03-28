@@ -766,7 +766,7 @@ class BioFuzzNet(DiGraph):
                 optim.zero_grad()
                 loss.backward(retain_graph=True)
 
-                torch.nn.utils.clip_grad_norm_(parameters, max_norm=5)
+                torch.nn.utils.clip_grad_value_(parameters, clip_value=5)
                 # Update the parameters
                 optim.step()
                 # We save metrics with their time to be able to compare training vs test even though they are not logged with the same frequency

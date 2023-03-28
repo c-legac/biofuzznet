@@ -119,9 +119,11 @@ def MSE_loss(predictions: dict, ground_truth: dict) -> torch.Tensor:
     # Compute the squared loss without any reduction
     mse_loss = torch.nn.MSELoss(reduction="none")
     squared_loss = mse_loss(predictions, ground_truth)
+
     # Then I can average however I want
     # I will then average over the network nodes
     loss = torch.mean(squared_loss, 0)
+
     # Then I average over the batch
     loss = torch.mean(loss)
     return loss
