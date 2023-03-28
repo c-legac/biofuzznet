@@ -1,4 +1,4 @@
-# biological_fuzzy_logic_networks (BioFuzzNet)
+# Biological Fuzzy logic Networks (BioFuzzNet)
 
 Fuzzy Logical Networks for Biological Systems. Optimized with stochastic gradient descent.
 
