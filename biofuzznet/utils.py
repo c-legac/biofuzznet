@@ -155,43 +155,6 @@ def MSE_entropy_loss(
     return loss
 
 
-def draw_BioFuzzNet(
-    G: nx.DiGraph, edge_color_scheme: dict, node_shape_scheme: dict, pos=None
-) -> dict:
-    # Cannot constrain G to have a BioFuzzNet class, otherwise there will be a circular import
-    """
-    Draws the BioFuzzNet.
-
-    Args:
-       edge_color_scheme: a dict associating the 'edge_type' attribute of BioFuzzNet edges to a color
-       node_shape_scheme: a dict associating the 'node_type' attribute of BioFuzzNet nodes to a shape
-    Returns:
-        dictionnary of node positions keyed by nodes
-    """
-    if (
-        pos is None
-    ):  # I do not know how to pass that as a default argument since I need to apply it to the graph
-        pos = nx.circular_layout(G)
-    node_type_list = list(node_shape_scheme.keys())
-    for node_type in node_type_list:
-        nodes_to_plot = [
-            node
-            for node, attributes in G.nodes(data=True)
-            if attributes["node_type"] == node_type
-        ]
-        nx.draw_networkx_nodes(
-            G,
-            pos,
-            nodelist=nodes_to_plot,
-            node_shape=node_shape_scheme[node_type],
-        )
-    # Draw the edges and the labels
-    edge_colors = [edge_color_scheme[G[u][v]["edge_type"]] for u, v in G.edges()]
-    nx.draw_networkx_edges(G, pos, edge_color=edge_colors)
-    nx.draw_networkx_labels(G, pos, font_size=8)
-    return pos
-
-
 def obtain_params(G) -> Tuple[dict, list, list]:
     """
     Return a tuple of the list of values taken by parameters n and K
