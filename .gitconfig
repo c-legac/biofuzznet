@@ -1,2 +1,2 @@
-[format]
-	signoff = true
+[alias]
+    commit = commit -s
