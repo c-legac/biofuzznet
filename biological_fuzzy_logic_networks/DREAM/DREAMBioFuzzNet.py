@@ -3,8 +3,7 @@ from biological_fuzzy_logic_networks.biomixnet import BioMixNet
 from biological_fuzzy_logic_networks.utils import MSE_loss
 from biological_fuzzy_logic_networks.DREAM.DREAMdataset import DREAMBioFuzzDataset
 from biological_fuzzy_logic_networks.utils import has_cycle
-from networkx import DiGraph
-from typing import Union, Optional
+from typing import Optional
 import torch as torch
 import pandas as pd
 from tqdm import tqdm
@@ -13,18 +12,7 @@ import warnings
 import copy
 
 
-class DREAMBioFuzzNet(DiGraph):
-    def __init__(
-        self,
-        nodes=None,
-        edges=None,
-        baseclass: Union[BioFuzzNet, BioMixNet] = BioFuzzNet,
-    ):
-        self.__class__ = type(
-            self.__class__.__name__, (baseclass, object), dict(self.__class__.__dict__)
-        )
-        super(self.__class__, self).__init__()
-
+class DREAMMixIn:
     def update_fuzzy_node(self, node: str, inhibition) -> None:
         """
         A wrapper to call the correct updating function depending on the type of the node.
@@ -284,3 +272,13 @@ class DREAMBioFuzzNet(DiGraph):
                 )
 
         return losses
+
+
+class DREAMBioFuzzNet(DREAMMixIn, BioFuzzNet):
+    def __init__(self, nodes=None, edges=None):
+        super(DREAMBioFuzzNet, self).__init__(nodes, edges)
+
+
+class DREAMBioMixNet(DREAMMixIn, BioMixNet):
+    def __init__(self, nodes=None, edges=None):
+        super(DREAMBioMixNet, self).__init__(nodes, edges)
