@@ -102,12 +102,12 @@ class DREAMMixIn:
             states[0] = self.output_states
             for i in range(1, int(length)):
                 states[i] = self.update_one_timestep_cyclic_network(
-                    input_nodes, loop_status, convergence_check
+                    input_nodes, inhibition, loop_status, convergence_check
                 )
             last_states = {}
             for i in range(int(length)):
                 states[length + i] = self.update_one_timestep_cyclic_network(
-                    input_nodes, loop_status, convergence_check
+                    input_nodes, inhibition, loop_status, convergence_check
                 )
                 last_states[i] = {
                     n: self.nodes()[n]["output_state"] for n in self.nodes()
@@ -122,6 +122,76 @@ class DREAMMixIn:
                 self.nodes()[n]["output_state"] = output_tensor
         if convergence_check:
             return states  # For checking convergence
+        else:
+            return None
+
+    def update_one_timestep_cyclic_network(
+        self, input_nodes, inhibition, loop_status, convergence_check=False
+    ) -> Optional[dict]:
+        """
+        Does the sequential update of a directed cyclic graph over one timestep: ie updates each node in the network only once.
+        Args:
+            - input_nodes: the node to start updating from, ie those for which we give the ground truth as input to the model
+            - loop_status: the value returned by utils.has_cycle(self) which is a tuple (bool, list) where bool is True if the
+            graph has a directed cycle, and the list is the list of all directed cycles in the graph
+            - convergence_check: default False. In case one wants to check convergence of the simulation
+                 for a graph with a loop, this Boolean should be set to True, and output state of the one-step simulation will be saved and returned. This has however not been
+                 optimised for time and memory usage. Use with caution.
+        """
+        if convergence_check:
+            warnings.warn(
+                "convergence_check has been set to True. All simulation states will be saved and returned. This has not been optimised for memory usage and is implemented in a naive manner. Proceed with caution."
+            )
+
+        current_nodes = copy.deepcopy(input_nodes)
+        non_updated_nodes = [n for n in self.nodes()]
+        while non_updated_nodes != []:
+            # curr_nodes is a queue, hence FIFO (first in first out)
+            # when popping the first item, we obtain the one that has been in the queue the longest
+            curr_node = current_nodes.pop(0)
+            # If the node has not yet been updated
+            if curr_node in non_updated_nodes:
+                can_update = False
+                non_updated_parents = [
+                    p for p in self.predecessors(curr_node) if p in non_updated_nodes
+                ]
+                # Check if parents are updated
+                if non_updated_parents != []:
+                    for p in non_updated_parents:
+                        # Check if there is a loop to which both the parent and the current node belong
+                        for cycle in loop_status[1]:
+                            if curr_node in cycle and p in cycle:
+                                # Then we will need to update curr_node without updating its parent
+                                non_updated_parents.remove(p)
+                                break
+                    # Now non_updated_parents only contains parents that are not part of a loop to which curr_node belongs
+                    if non_updated_parents != []:
+                        can_update = False
+                        for p in non_updated_parents:
+                            current_nodes.append(p)
+                    else:
+                        can_update = True
+                    # The parents that were removed will be updated later as they are still part of non_updated nodes
+                else:  # If all node parents are updated then no problem
+                    can_update = True
+                if not can_update:
+                    # Then we reappend the current visited node
+                    current_nodes.append(curr_node)
+                else:  # Here we can update
+                    self.update_fuzzy_node(curr_node, inhibition)
+                    non_updated_nodes.remove(curr_node)
+                    cont = True
+                    while cont:
+                        try:
+                            current_nodes.remove(curr_node)
+                        except ValueError:
+                            cont = False
+                    child_nodes = [c for c in self.successors(curr_node)]
+                    for c in child_nodes:
+                        if c in non_updated_nodes:
+                            current_nodes.append(c)
+        if convergence_check:
+            return self.output_states  # For checking convergence
         else:
             return None
 

@@ -362,10 +362,10 @@ class BioFuzzNet(DiGraph):
                     node["output_state"] = ground_truth[
                         node_name
                     ]  # A root node does not need to be predicted
-            else:
-                warnings.warn(
-                    f"Node {node_name} is not present in ground truth. Its ground_truth value is not set."
-                )
+            # else:
+            #     warnings.warn(
+            #         f"Node {node_name} is not present in ground truth. Its ground_truth value is not set."
+            #     )
 
     # Update methods
     def propagate_along_edge(self, edge: tuple) -> torch.Tensor:
