@@ -6,13 +6,18 @@ from biological_fuzzy_logic_networks.utils import read_sif
 from biological_fuzzy_logic_networks.biomixnet import BioMixNet
 from biological_fuzzy_logic_networks.biofuzznet import BioFuzzNet
 
-from biological_fuzzy_logic_networks.DREAM_analysis.scripts.utils import data_to_nodes_mapping, inhibitor_mapping
+from biological_fuzzy_logic_networks.DREAM_analysis.utils import (
+    data_to_nodes_mapping,
+    inhibitor_mapping,
+)
 
 import pandas as pd
 from typing import List
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
 from torch import DoubleTensor
+import click
+import json
 
 
 def create_bfz(pkn_sif: str, network_class: str):
@@ -47,6 +52,7 @@ def prepare_cell_line_data(
     input_value: float = 1,
 ):
     cl_data = pd.read_csv(data_file)
+    print(cl_data["cell_line"].unique())
     data_to_nodes_map = data_to_nodes_mapping()
     inhibitor_map = inhibitor_mapping()
 
@@ -89,9 +95,29 @@ def cl_data_to_input(
         train, test = train_test_split(data)
 
     elif train_treatments is not None and test_treatments is not None:
+        if not isinstance(train_treatments, List):
+            train_treatments = [train_treatments]
+        if not isinstance(test_treatments, List):
+            test_treatments = [test_treatments]
+
         if not len(set(train_treatments).intersection(set(test_treatments))) == 0:
             raise Exception("Given train and test treatments overlap")
+        else:
+            inhibitor_map = inhibitor_mapping()
+            train_inhibitors = [
+                inhibitor_map[treatment] for treatment in train_treatments
+            ]
+            test_inhibitors = [
+                inhibitor_map[treatment] for treatment in test_treatments
+            ]
+
+            train = data.loc[data["inhibitor"].isin(train_inhibitors)]
+            test = data.loc[data["inhibitor"].isin(test_inhibitors)]
+
     elif train_treatments is not None:
+        if not isinstance(train_treatments, List):
+            train_treatments = [train_treatments]
+
         inhibitor_map = inhibitor_mapping()
         train_inhibitors = [inhibitor_map[treatment] for treatment in train_treatments]
         test_inhibitors = [
@@ -102,6 +128,11 @@ def cl_data_to_input(
         train = data.loc[data["inhibitor"].isin(train_inhibitors)]
         test = data.loc[data["inhibitor"].isin(test_inhibitors)]
     elif test_treatments is not None:
+        print("Splitting based on test treatment")
+        if not isinstance(test_treatments, List):
+            test_treatments = [test_treatments]
+        print(test_treatments)
+
         inhibitor_map = inhibitor_mapping()
         test_inhibitors = [inhibitor_map[treatment] for treatment in test_treatments]
         train_inhibitors = [
@@ -111,6 +142,11 @@ def cl_data_to_input(
         ]
         train = data.loc[data["inhibitor"].isin(train_inhibitors)]
         test = data.loc[data["inhibitor"].isin(test_inhibitors)]
+
+    # print(train_inhibitors)
+    # print(test_inhibitors)
+    print(train["inhibitor"].unique())
+    print(test["inhibitor"].unique())
 
     train_dict = train.to_dict("list")
     test_dict = test.to_dict("list")
@@ -199,7 +235,21 @@ def train_network(
 
     output_states = pd.DataFrame({k: v.numpy() for k, v in model.output_states.items()})
 
-    loss.to_csv(f"{output_dir}/loss.csv")
+    loss.to_csv(f"{output_dir}loss.csv")
     output_states.to_csv(f"{output_dir}output_states.csv")
     train_data.to_csv(f"{output_dir}train_data.csv")
     test_data.to_csv(f"{output_dir}test_data.csv")
+
+
+@click.command()
+@click.argument("config_path")
+def main(config_path):
+    with open(config_path) as f:
+        config = json.load(f)
+    f.close()
+
+    train_network(**config)
+
+
+if __name__ == "__main__":
+    main()
