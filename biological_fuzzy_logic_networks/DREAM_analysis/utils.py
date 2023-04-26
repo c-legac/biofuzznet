@@ -1,4 +1,256 @@
 import numpy as np
+from biological_fuzzy_logic_networks.biomixnet import BioMixNet
+from biological_fuzzy_logic_networks.biofuzznet import BioFuzzNet
+from biological_fuzzy_logic_networks.utils import read_sif
+from biological_fuzzy_logic_networks.DREAM.DREAMBioFuzzNet import (
+    DREAMBioFuzzNet,
+    DREAMBioMixNet,
+)
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.model_selection import train_test_split
+from torch import DoubleTensor
+import pandas as pd
+from typing import List, Union
+
+
+def create_bfz(pkn_sif: str, network_class: str):
+    nodes, edges = read_sif(pkn_sif)
+    if network_class.lower() == "dreambiofuzznet":
+        model = DREAMBioFuzzNet(nodes, edges)
+
+    elif network_class.lower() == "dreambiomixnet":
+        model = DREAMBioMixNet(nodes, edges)
+
+    elif network_class.lower() == "biomixnet":
+        model = BioMixNet(nodes, edges)
+    elif network_class.lower() == "biofuzznet":
+        model = BioFuzzNet(nodes, edges)
+    else:
+        raise Exception(
+            "network_class arguement not recognised, should be one of",
+            "DREAMBioFuzzNet, DREAMBioMixNet, BioFuzzNet, BioMixNet",
+        )
+
+    return model
+
+
+def prepare_cell_line_data(
+    data_file: Union[List, str],
+    root_nodes: List[str] = ["EGF", "SERUM"],
+    time_point: int = 9,
+    non_marker_cols: List[str] = ["treatment", "cell_line", "time", "cellID", "fileID"],
+    treatment_col_name: str = "treatment",
+    add_root_values: bool = True,
+    input_value: float = 1,
+):
+    if isinstance(data_file, str):
+        cl_data = pd.read_csv(data_file)
+    elif isinstance(data_file, List):
+        data = []
+        for file_name in data_file:
+            d = pd.read_csv(file_name)
+            data.append(d)
+        cl_data = pd.concat(data)
+    else:
+        Exception("`data_file` should be a string or list of strings")
+
+    print(cl_data["cell_line"].unique())
+    data_to_nodes_map = data_to_nodes_mapping()
+    inhibitor_map = inhibitor_mapping()
+
+    cl_data = cl_data[cl_data["time"] == time_point]
+
+    cl_data.loc[:, "inhibitor"] = [
+        inhibitor_map[treatment] for treatment in cl_data[treatment_col_name]
+    ]
+
+    cl_data = cl_data.rename(columns=data_to_nodes_map)
+
+    if add_root_values:
+        cl_data.loc[:, root_nodes] = input_value
+
+    return cl_data
+
+
+def split_data(
+    data, train_treatments, valid_treatments, train_cell_lines, valid_cell_lines
+):
+    treatment_split = True
+    cell_line_split = True
+    if train_treatments is None and valid_treatments is None:
+        treatment_split = False
+    if train_cell_lines is None and valid_cell_lines is None:
+        cell_line_split = False
+
+    if not treatment_split and not cell_line_split:
+        train, valid = train_test_split(data)
+
+    else:
+        if not treatment_split:
+            train_inhibitors = list(data["inhibitor"].unique())
+            valid_inhibitors = list(data["inhibitor"].unique())
+
+        else:
+            if train_treatments is not None and valid_treatments is not None:
+                if not isinstance(train_treatments, List):
+                    train_treatments = [train_treatments]
+                if not isinstance(valid_treatments, List):
+                    valid_treatments = [valid_treatments]
+
+                if (
+                    not len(set(train_treatments).intersection(set(valid_treatments)))
+                    == 0
+                ):
+                    raise Exception("Given train and validation treatments overlap")
+                else:
+                    inhibitor_map = inhibitor_mapping()
+                    train_inhibitors = [
+                        inhibitor_map[treatment] for treatment in train_treatments
+                    ]
+                    valid_inhibitors = [
+                        inhibitor_map[treatment] for treatment in valid_treatments
+                    ]
+
+            elif train_treatments is not None:
+                print("Splitting based on train treatment(s)")
+                if not isinstance(train_treatments, List):
+                    train_treatments = [train_treatments]
+
+                inhibitor_map = inhibitor_mapping()
+                train_inhibitors = [
+                    inhibitor_map[treatment] for treatment in train_treatments
+                ]
+                valid_inhibitors = [
+                    inhibitor
+                    for inhibitor in data["inhibitor"].unique()
+                    if inhibitor not in train_inhibitors
+                ]
+
+            elif valid_treatments is not None:
+                print("Splitting based on validation treatment(s)")
+                if not isinstance(valid_treatments, List):
+                    valid_treatments = [valid_treatments]
+
+                inhibitor_map = inhibitor_mapping()
+                valid_inhibitors = [
+                    inhibitor_map[treatment] for treatment in valid_treatments
+                ]
+                train_inhibitors = [
+                    inhibitor
+                    for inhibitor in data["inhibitor"].unique()
+                    if inhibitor not in valid_inhibitors
+                ]
+
+        if not cell_line_split:
+            train_cell_lines = list(data["cell_line"].unique())
+            valid_cell_lines = list(data["cell_line"].unique())
+        else:
+            if train_cell_lines is not None and valid_cell_lines is not None:
+                if not isinstance(train_cell_lines, List):
+                    train_cell_lines = [train_cell_lines]
+                if not isinstance(valid_cell_lines, List):
+                    valid_cell_lines = [valid_cell_lines]
+
+                if (
+                    not len(set(train_cell_lines).intersection(set(valid_cell_lines)))
+                    == 0
+                ):
+                    raise Exception("Given train and validation cell lines overlap")
+
+            elif train_cell_lines is not None:
+                print("Splitting based on train cell line(s)")
+                if not isinstance(train_cell_lines, List):
+                    train_cell_lines = [train_cell_lines]
+
+                valid_cell_lines = [
+                    cl
+                    for cl in data["cell_line"].unique()
+                    if cl not in train_cell_lines
+                ]
+
+            elif valid_cell_lines is not None:
+                print("Splitting based on validation cell line(s)")
+                if not isinstance(valid_cell_lines, List):
+                    valid_cell_lines = [valid_cell_lines]
+
+                train_cell_lines = [
+                    cl
+                    for cl in data["cell_line"].unique()
+                    if cl not in valid_cell_lines
+                ]
+
+        train = data.loc[
+            (data["cell_line"].isin(train_cell_lines))
+            & data["inhibitor"].isin(train_inhibitors),
+            :,
+        ]
+        valid = data.loc[
+            (data["cell_line"].isin(valid_cell_lines))
+            & data["inhibitor"].isin(valid_inhibitors),
+            :,
+        ]
+
+    return train, valid
+
+
+def cl_data_to_input(
+    data,
+    model,
+    train_treatments: List[str] = None,
+    valid_treatments: List[str] = None,
+    train_cell_lines: List[str] = None,
+    valid_cell_lines: List[str] = None,
+    inhibition_value: Union[int, float] = 1.0,
+    minmaxscale: bool = True,
+):
+    markers = [c for c in data.columns if c in model.nodes()]
+
+    data = data.dropna(subset=markers, axis=0)
+
+    train, valid = split_data(
+        data, train_treatments, valid_treatments, train_cell_lines, valid_cell_lines
+    )
+    if minmaxscale:
+        scaler = MinMaxScaler()
+        scaler.fit(train[markers])
+        train[markers] = scaler.transform(train[markers])
+        valid[markers] = scaler.transform(valid[markers])
+
+    train_dict = train.to_dict("list")
+    valid_dict = valid.to_dict("list")
+    train_data = {
+        k: DoubleTensor(v) for k, v in train_dict.items() if k in model.nodes()
+    }
+    valid_data = {
+        k: DoubleTensor(v) for k, v in valid_dict.items() if k in model.nodes()
+    }
+
+    train_inhibitors = {
+        m1: DoubleTensor(
+            [inhibition_value if m == m1 else 1.0 for m in train_dict["inhibitor"]]
+        )
+        for m1 in model.nodes()
+    }
+    valid_inhibitors = {
+        m1: DoubleTensor(
+            [inhibition_value if m == m1 else 1.0 for m in valid_dict["inhibitor"]]
+        )
+        for m1 in model.nodes()
+    }
+
+    train_input = {node: train_data[node] for node in model.root_nodes}
+    valid_input = {node: valid_data[node] for node in model.root_nodes}
+
+    return (
+        train_data,
+        valid_data,
+        train_inhibitors,
+        valid_inhibitors,
+        train_input,
+        valid_input,
+        train,
+        valid,
+    )
 
 
 def inhibitor_mapping(reverse: bool = False):
@@ -7,7 +259,7 @@ def inhibitor_mapping(reverse: bool = False):
         "EGF": np.nan,
         "full": np.nan,
         "iEGFR": "EGFR",
-        "iMEK": "MEK12_S221",
+        "iMEK": "MEK12",
         "iPI3K": "PI3K",
         "iPKC": "PKC",
     }
@@ -38,7 +290,7 @@ def data_to_nodes_mapping():
         "p.JNK": "JNK",
         "p.MAP2K3": "MAP3Ks",
         "p.MAPKAPK2": "MAPKAPK2",
-        "p.MEK": "MEK12_S221",
+        "p.MEK": "MEK12",
         "p.MKK3.MKK6": "MKK36",
         "p.MKK4": "MKK4",
         "p.NFkB": "NFkB",

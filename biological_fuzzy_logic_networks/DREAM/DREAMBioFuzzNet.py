@@ -3,6 +3,7 @@ from biological_fuzzy_logic_networks.biomixnet import BioMixNet
 from biological_fuzzy_logic_networks.utils import MSE_loss
 from biological_fuzzy_logic_networks.DREAM.DREAMdataset import DREAMBioFuzzDataset
 from biological_fuzzy_logic_networks.utils import has_cycle
+import networkx as nx
 from typing import Optional
 import torch as torch
 import pandas as pd
@@ -200,13 +201,16 @@ class DREAMMixIn:
         input: dict,
         ground_truth: dict,
         train_inhibitors: dict,
-        test_input: dict,
-        test_ground_truth: dict,
-        test_inhibitors: dict,
+        valid_input: dict,
+        valid_ground_truth: dict,
+        valid_inhibitors: dict,
         epochs: int,
         batch_size: int,
         learning_rate: float,
         optim_wrapper=torch.optim.Adam,
+        convergence_check: bool = False,
+        save_checkpoint: bool = True,
+        checkpoint_path: str = None,
     ):
         """
         The main function of this class.
@@ -226,8 +230,8 @@ class DREAMMixIn:
                 other nodes can be specified.
             - ground_truth: training dict of {node_name: torch.Tensor} mapping each observed biological node to its measured values
                 Only  the nodes present in ground_truth will be used to compute the loss/
-            - test_input: dict of torch.Tensor containing root node names mapped to the input validation data
-            - test_ground_truth:  dict of torch.Tensor mapping node names to their value from the validation set
+            - valid_input: dict of torch.Tensor containing root node names mapped to the input validation data
+            - valid_ground_truth:  dict of torch.Tensor mapping node names to their value from the validation set
             - epochs: number of epochs for optimisation
             - batch_size: batch size for optimisation
             - learning_rate : learning rate for optimisation with ADAM
@@ -243,7 +247,7 @@ class DREAMMixIn:
         torch.set_default_tensor_type(torch.DoubleTensor)
         # Input nodes
         if self.root_nodes == []:
-            input_nodes = [k for k in test_input.keys()]
+            input_nodes = [k for k in valid_input.keys()]
             print(f"There were no root nodes, {input_nodes} were used as input")
         else:
             input_nodes = self.root_nodes
@@ -269,6 +273,7 @@ class DREAMMixIn:
 
         # Train the model
         losses = pd.DataFrame(columns=["time", "loss", "phase"])
+        curr_best_val_loss = 1e6
 
         for e in tqdm(range(epochs)):
             # Instantiate the model
@@ -282,7 +287,9 @@ class DREAMMixIn:
                 # predict and compute the loss
                 self.set_network_ground_truth(ground_truth=y_batch)
                 # Simulate
-                self.sequential_update(input_nodes, inhibited_batch)
+                self.sequential_update(
+                    input_nodes, inhibited_batch, convergence_check=convergence_check
+                )
 
                 # Get the predictions
                 predictions = self.output_states
@@ -296,7 +303,7 @@ class DREAMMixIn:
                 torch.nn.utils.clip_grad_value_(parameters, clip_value=5)
                 # Update the parameters
                 optim.step()
-                # We save metrics with their time to be able to compare training vs test even though they are not logged with the same frequency
+                # We save metrics with their time to be able to compare training vs validation even though they are not logged with the same frequency
                 losses = pd.concat(
                     [
                         losses,
@@ -314,16 +321,34 @@ class DREAMMixIn:
             with torch.no_grad():
                 # Instantiate the model
                 self.initialise_random_truth_and_output(
-                    len(test_ground_truth[input_nodes[0]])
+                    len(valid_ground_truth[input_nodes[0]])
                 )
-                self.set_network_ground_truth(ground_truth=test_ground_truth)
+                self.set_network_ground_truth(ground_truth=valid_ground_truth)
                 # Simulation
-                self.sequential_update(input_nodes, test_inhibitors)
+                self.sequential_update(input_nodes, valid_inhibitors)
                 # Get the predictions
                 predictions = self.output_states
-                test_loss = MSE_loss(
-                    predictions=predictions, ground_truth=test_ground_truth
+                valid_loss = MSE_loss(
+                    predictions=predictions, ground_truth=valid_ground_truth
                 )
+
+                if curr_best_val_loss > valid_loss:
+                    curr_best_val_loss = valid_loss
+                    module_of_edges = torch.nn.ModuleDict(
+                        {
+                            f"{edge[0]}@@@{edge[1]}": self.edges()[edge]["layer"]
+                            for edge in self.transfer_edges
+                        }
+                    )
+                    torch.save(
+                        {
+                            "epoch": e,
+                            "model_state_dict": module_of_edges.state_dict(),
+                            "optimizer_state_dict": optim.state_dict(),
+                            "loss": valid_loss,
+                        },
+                        f"{checkpoint_path}model.pt",
+                    )
 
                 # No need to detach since there are no gradients
                 losses = pd.concat(
@@ -332,8 +357,8 @@ class DREAMMixIn:
                         pd.DataFrame(
                             {
                                 "time": datetime.now(),
-                                "loss": test_loss.item(),
-                                "phase": "test",
+                                "loss": valid_loss.item(),
+                                "phase": "valid",
                             },
                             index=[0],
                         ),
@@ -342,6 +367,20 @@ class DREAMMixIn:
                 )
 
         return losses
+
+    def load_from_checkpoint(self, model_state_dict):
+        module_dict = torch.nn.ModuleDict(
+            {
+                f"{edge[0]}@@@{edge[1]}": self.edges()[edge]["layer"]
+                for edge in self.transfer_edges
+            }
+        )
+        module_dict.load_state_dict(model_state_dict)
+        edge_att = {
+            (k.split("@@@")[0], k.split("@@@")[1]): {"layer": v}
+            for k, v in module_dict.items()
+        }
+        nx.set_edge_attributes(self, edge_att)
 
 
 class DREAMBioFuzzNet(DREAMMixIn, BioFuzzNet):
