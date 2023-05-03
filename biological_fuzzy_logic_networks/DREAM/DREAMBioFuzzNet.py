@@ -287,7 +287,7 @@ class DREAMMixIn:
                 # predict and compute the loss
                 self.set_network_ground_truth(ground_truth=y_batch)
                 # Simulate
-                self.sequential_update(
+                loop_states = self.sequential_update(
                     input_nodes, inhibited_batch, convergence_check=convergence_check
                 )
 
@@ -365,8 +365,10 @@ class DREAMMixIn:
                     ],
                     ignore_index=True,
                 )
-
-        return losses
+        if convergence_check:
+            return losses, loop_states
+        else:
+            return losses
 
     def load_from_checkpoint(self, model_state_dict):
         module_dict = torch.nn.ModuleDict(

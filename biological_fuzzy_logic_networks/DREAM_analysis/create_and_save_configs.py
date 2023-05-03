@@ -11,7 +11,8 @@ def create_and_save_configs(sampled_params, base_config, i):
     for key, value in sampled_params.items():
         config[key] = value
 
-    config["output_dir"] = f"{base_config['output_dir']}/{i}/"
+    config["output_dir"] = f"{base_config['output_dir']}{i}/"
+    config["checkpoint_path"] = f"{base_config['checkpoint_path']}{i}/"
 
     try:
         os.mkdir(config["output_dir"])
@@ -146,11 +147,12 @@ if __name__ == "__main__":
         "valid_treatments": None,
         "train_cell_lines": None,
         "valid_cell_lines": None,
+        "convergence_check": False,
         "inhibition_value": 1.0,
         "learning_rate": 1e-3,
         "n_epochs": 20,
         "batch_size": 300,
-        "checkpoint_path": "/dccstor/ipc1/CAR/DREAM/Model/Test/",
+        "checkpoint_path": "/dccstor/ipc1/CAR/DREAM/Model/Test/MEK_FAK_ERK/",
     }
 
     main(base_config=base_config, param_grid=param_grid)

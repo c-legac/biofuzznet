@@ -36,12 +36,9 @@ def create_bfz(pkn_sif: str, network_class: str):
 
 def prepare_cell_line_data(
     data_file: Union[List, str],
-    root_nodes: List[str] = ["EGF", "SERUM"],
     time_point: int = 9,
     non_marker_cols: List[str] = ["treatment", "cell_line", "time", "cellID", "fileID"],
     treatment_col_name: str = "treatment",
-    add_root_values: bool = True,
-    input_value: float = 1,
 ):
     if isinstance(data_file, str):
         cl_data = pd.read_csv(data_file)
@@ -65,9 +62,6 @@ def prepare_cell_line_data(
     ]
 
     cl_data = cl_data.rename(columns=data_to_nodes_map)
-
-    if add_root_values:
-        cl_data.loc[:, root_nodes] = input_value
 
     return cl_data
 
@@ -202,6 +196,9 @@ def cl_data_to_input(
     valid_cell_lines: List[str] = None,
     inhibition_value: Union[int, float] = 1.0,
     minmaxscale: bool = True,
+    add_root_values: bool = True,
+    input_value: float = 1,
+    root_nodes: List[str] = ["EGF", "SERUM"],
 ):
     markers = [c for c in data.columns if c in model.nodes()]
 
@@ -215,6 +212,9 @@ def cl_data_to_input(
         scaler.fit(train[markers])
         train[markers] = scaler.transform(train[markers])
         valid[markers] = scaler.transform(valid[markers])
+    if add_root_values:
+        train.loc[:, root_nodes] = input_value
+        valid.loc[:, root_nodes] = input_value
 
     train_dict = train.to_dict("list")
     valid_dict = valid.to_dict("list")
@@ -254,7 +254,6 @@ def cl_data_to_input(
 
 
 def inhibitor_mapping(reverse: bool = False):
-
     inhibitor_mapping = {
         "EGF": np.nan,
         "full": np.nan,
@@ -271,7 +270,6 @@ def inhibitor_mapping(reverse: bool = False):
 
 
 def data_to_nodes_mapping():
-
     data_to_nodes = {
         "EGF": "EGF",
         "SERUM": "SERUM",

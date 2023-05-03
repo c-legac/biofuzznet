@@ -20,6 +20,7 @@ def train_network(
     minmaxscale: bool = True,
     add_root_values: bool = True,
     input_value: float = 1,
+    root_nodes: List[str] = ["EGF", "SERUM"],
     train_treatments: List[str] = None,
     valid_treatments: List[str] = None,
     train_cell_lines: List[str] = None,
@@ -29,18 +30,15 @@ def train_network(
     n_epochs: int = 20,
     batch_size: int = 300,
     checkpoint_path: str = None,
+    convergence_check: bool = False,
     **extras,
 ):
-
     model = create_bfz(pkn_sif, network_class)
     cl_data = prepare_cell_line_data(
         data_file=data_file,
-        root_nodes=model.root_nodes,
         time_point=time_point,
         non_marker_cols=non_marker_cols,
         treatment_col_name=treatment_col_name,
-        add_root_values=add_root_values,
-        input_value=input_value,
     )
 
     (
@@ -61,9 +59,12 @@ def train_network(
         valid_cell_lines=valid_cell_lines,
         inhibition_value=inhibition_value,
         minmaxscale=minmaxscale,
+        add_root_values=add_root_values,
+        input_value=input_value,
+        root_nodes=root_nodes,
     )
 
-    loss = model.conduct_optimisation(
+    loss, loop_states = model.conduct_optimisation(
         input=train_input,
         valid_input=valid_input,
         ground_truth=train_data,
@@ -74,6 +75,7 @@ def train_network(
         learning_rate=learning_rate,
         batch_size=batch_size,
         checkpoint_path=checkpoint_path,
+        convergence_check=convergence_check,
     )
 
     output_states = pd.DataFrame({k: v.numpy() for k, v in model.output_states.items()})
@@ -84,6 +86,18 @@ def train_network(
     valid.to_csv(f"{output_dir}valid_data.csv")
     pd.DataFrame(train_inhibitors).to_csv(f"{output_dir}train_inhibitors.csv")
     pd.DataFrame(valid_inhibitors).to_csv(f"{output_dir}valid_inhibitors.csv")
+
+    if convergence_check:
+        temp = {
+            idx: {m: v.detach().numpy() for (m, v) in m.items()}
+            for (idx, m) in loop_states.items()
+        }
+        loop_states_to_save = pd.concat(
+            [pd.DataFrame(v) for k, v in temp.items()],
+            keys=temp.keys(),
+            names=["time", ""],
+        ).reset_index("time", drop=False)
+        loop_states_to_save.to_csv(f"{output_dir}loop_states.csv")
 
 
 @click.command()
