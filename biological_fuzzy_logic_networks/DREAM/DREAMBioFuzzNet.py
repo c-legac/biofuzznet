@@ -107,6 +107,7 @@ class DREAMMixIn:
                 )
             last_states = {}
             for i in range(int(length)):
+                print(i)
                 states[length + i] = self.update_one_timestep_cyclic_network(
                     input_nodes, inhibition, loop_status, convergence_check
                 )
@@ -179,6 +180,7 @@ class DREAMMixIn:
                     # Then we reappend the current visited node
                     current_nodes.append(curr_node)
                 else:  # Here we can update
+                    print(curr_node)
                     self.update_fuzzy_node(curr_node, inhibition)
                     non_updated_nodes.remove(curr_node)
                     cont = True
@@ -366,9 +368,9 @@ class DREAMMixIn:
                     ignore_index=True,
                 )
         if convergence_check:
-            return losses, loop_states
+            return losses, curr_best_val_loss, loop_states
         else:
-            return losses
+            return losses, curr_best_val_loss, None
 
     def load_from_checkpoint(self, model_state_dict):
         module_dict = torch.nn.ModuleDict(

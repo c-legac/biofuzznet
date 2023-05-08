@@ -5,8 +5,12 @@ from biological_fuzzy_logic_networks.DREAM_analysis.utils import (
 )
 import pandas as pd
 from typing import List, Union
+from app_tunnel.apps import mlflow_tunnel
+from sklearn.metrics import r2_score
+import mlflow
 import click
 import json
+import torch
 
 
 def train_network(
@@ -33,6 +37,7 @@ def train_network(
     convergence_check: bool = False,
     **extras,
 ):
+    mlflow.log_metric("test", 4)
     model = create_bfz(pkn_sif, network_class)
     cl_data = prepare_cell_line_data(
         data_file=data_file,
@@ -64,7 +69,7 @@ def train_network(
         root_nodes=root_nodes,
     )
 
-    loss, loop_states = model.conduct_optimisation(
+    loss, best_val_loss, loop_states = model.conduct_optimisation(
         input=train_input,
         valid_input=valid_input,
         ground_truth=train_data,
@@ -78,15 +83,6 @@ def train_network(
         convergence_check=convergence_check,
     )
 
-    output_states = pd.DataFrame({k: v.numpy() for k, v in model.output_states.items()})
-
-    loss.to_csv(f"{output_dir}loss.csv")
-    output_states.to_csv(f"{output_dir}output_states.csv")
-    train.to_csv(f"{output_dir}train_data.csv")
-    valid.to_csv(f"{output_dir}valid_data.csv")
-    pd.DataFrame(train_inhibitors).to_csv(f"{output_dir}train_inhibitors.csv")
-    pd.DataFrame(valid_inhibitors).to_csv(f"{output_dir}valid_inhibitors.csv")
-
     if convergence_check:
         temp = {
             idx: {m: v.detach().numpy() for (m, v) in m.items()}
@@ -99,6 +95,31 @@ def train_network(
         ).reset_index("time", drop=False)
         loop_states_to_save.to_csv(f"{output_dir}loop_states.csv")
 
+    # Load best model and evaluate:
+    ckpt = torch.load(f"{checkpoint_path}/model.pt")
+    model = create_bfz(pkn_sif, network_class)
+    model.load_from_checkpoint(ckpt["model_state_dict"])
+    with torch.no_grad():
+        model.set_network_ground_truth(valid_data)
+        model.sequential_update(model.root_nodes, valid_inhibitors)
+        output_states = pd.DataFrame(
+            {k: v.numpy() for k, v in model.output_states.items()}
+        )
+
+    node_r2_scores = {}
+    for node in valid_data.keys():
+        node_r2_scores[f"val_r2_{node}"] = r2_score(valid[node], output_states[node])
+
+    mlflow.log_metric("val_loss", best_val_loss)
+    mlflow.log_metrics(node_r2_scores)
+
+    output_states.to_csv(f"{output_dir}output_states.csv")
+    loss.to_csv(f"{output_dir}loss.csv")
+    train.to_csv(f"{output_dir}train_data.csv")
+    valid.to_csv(f"{output_dir}valid_data.csv")
+    pd.DataFrame(train_inhibitors).to_csv(f"{output_dir}train_inhibitors.csv")
+    pd.DataFrame(valid_inhibitors).to_csv(f"{output_dir}valid_inhibitors.csv")
+
 
 @click.command()
 @click.argument("config_path")
@@ -107,7 +128,9 @@ def main(config_path):
         config = json.load(f)
     f.close()
 
-    train_network(**config)
+    with mlflow_tunnel(host="mlflow"):
+        mlflow.set_tracking_uri("http://localhost:5000")
+        train_network(**config)
 
 
 if __name__ == "__main__":

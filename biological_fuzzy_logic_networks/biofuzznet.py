@@ -564,6 +564,7 @@ class BioFuzzNet(DiGraph):
                     # Then we reappend the current visited node
                     current_nodes.append(curr_node)
                 else:  # Here we can update
+                    print(curr_node)
                     self.update_fuzzy_node(curr_node)
                     non_updated_nodes.remove(curr_node)
                     cont = True
