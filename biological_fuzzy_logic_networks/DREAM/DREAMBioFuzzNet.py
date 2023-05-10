@@ -209,8 +209,8 @@ class DREAMMixIn:
         epochs: int,
         batch_size: int,
         learning_rate: float,
-        logger,
         optim_wrapper=torch.optim.Adam,
+        logger=None,
         convergence_check: bool = False,
         save_checkpoint: bool = True,
         checkpoint_path: str = None,
@@ -307,7 +307,8 @@ class DREAMMixIn:
                 # Update the parameters
                 optim.step()
                 # We save metrics with their time to be able to compare training vs validation even though they are not logged with the same frequency
-                logger.log_metric("train_loss", loss.detach().item())
+                if logger is not None:
+                    logger.log_metric("train_loss", loss.detach().item())
                 losses = pd.concat(
                     [
                         losses,
@@ -338,24 +339,26 @@ class DREAMMixIn:
 
                 if curr_best_val_loss > valid_loss:
                     curr_best_val_loss = valid_loss
-                    module_of_edges = torch.nn.ModuleDict(
-                        {
-                            f"{edge[0]}@@@{edge[1]}": self.edges()[edge]["layer"]
-                            for edge in self.transfer_edges
-                        }
-                    )
-                    torch.save(
-                        {
-                            "epoch": e,
-                            "model_state_dict": module_of_edges.state_dict(),
-                            "optimizer_state_dict": optim.state_dict(),
-                            "loss": valid_loss,
-                        },
-                        f"{checkpoint_path}model.pt",
-                    )
+                    if checkpoint_path is not None:
+                        module_of_edges = torch.nn.ModuleDict(
+                            {
+                                f"{edge[0]}@@@{edge[1]}": self.edges()[edge]["layer"]
+                                for edge in self.transfer_edges
+                            }
+                        )
+                        torch.save(
+                            {
+                                "epoch": e,
+                                "model_state_dict": module_of_edges.state_dict(),
+                                "optimizer_state_dict": optim.state_dict(),
+                                "loss": valid_loss,
+                            },
+                            f"{checkpoint_path}model.pt",
+                        )
 
                 # No need to detach since there are no gradients
-                logger.log_metric("valid_loss", valid_loss.item())
+                if logger is not None:
+                    logger.log_metric("valid_loss", valid_loss.item())
                 losses = pd.concat(
                     [
                         losses,
