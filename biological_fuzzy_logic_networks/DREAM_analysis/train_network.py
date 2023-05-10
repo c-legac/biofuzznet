@@ -4,6 +4,7 @@ from biological_fuzzy_logic_networks.DREAM_analysis.utils import (
     cl_data_to_input,
 )
 import pandas as pd
+import numpy as np
 from typing import List, Union
 from app_tunnel.apps import mlflow_tunnel
 from sklearn.metrics import r2_score
@@ -29,6 +30,7 @@ def train_network(
     valid_treatments: List[str] = None,
     train_cell_lines: List[str] = None,
     valid_cell_lines: List[str] = None,
+    test_cell_lines: List[str] = None,
     inhibition_value: Union[int, float] = 1.0,
     learning_rate: float = 1e-3,
     n_epochs: int = 20,
@@ -37,7 +39,6 @@ def train_network(
     convergence_check: bool = False,
     **extras,
 ):
-    mlflow.log_metric("test", 4)
     model = create_bfz(pkn_sif, network_class)
     cl_data = prepare_cell_line_data(
         data_file=data_file,
@@ -46,6 +47,7 @@ def train_network(
         treatment_col_name=treatment_col_name,
     )
 
+    # Load train and valid data
     (
         train_data,
         valid_data,
@@ -55,6 +57,7 @@ def train_network(
         valid_input,
         train,
         valid,
+        scaler,
     ) = cl_data_to_input(
         data=cl_data,
         model=model,
@@ -69,6 +72,31 @@ def train_network(
         root_nodes=root_nodes,
     )
 
+    # Load test data
+    # Test set performance
+    cl_data = prepare_cell_line_data(
+        data_file=test_cell_lines,
+        time_point=time_point,
+        non_marker_cols=non_marker_cols,
+        treatment_col_name=treatment_col_name,
+    )
+
+    (test_data, test_inhibitors, test_input, test, scaler) = cl_data_to_input(
+        data=cl_data,
+        model=model,
+        train_treatments=train_treatments,
+        valid_treatments=valid_treatments,
+        train_cell_lines=train_cell_lines,
+        valid_cell_lines=valid_cell_lines,
+        inhibition_value=inhibition_value,
+        minmaxscale=scaler,
+        add_root_values=add_root_values,
+        input_value=input_value,
+        root_nodes=root_nodes,
+        do_split=False,
+    )
+
+    # Optimize model
     loss, best_val_loss, loop_states = model.conduct_optimisation(
         input=train_input,
         valid_input=valid_input,
@@ -81,6 +109,7 @@ def train_network(
         batch_size=batch_size,
         checkpoint_path=checkpoint_path,
         convergence_check=convergence_check,
+        logger=mlflow,
     )
 
     if convergence_check:
@@ -102,23 +131,49 @@ def train_network(
     with torch.no_grad():
         model.set_network_ground_truth(valid_data)
         model.sequential_update(model.root_nodes, valid_inhibitors)
-        output_states = pd.DataFrame(
+        val_output_states = pd.DataFrame(
             {k: v.numpy() for k, v in model.output_states.items()}
         )
 
+        model.set_network_ground_truth(test_data)
+        model.sequential_update(model.root_nodes, test_inhibitors)
+        test_output_states = pd.DataFrame(
+            {k: v.numpy() for k, v in model.output_states.items()}
+        )
+
+    # Vaidation performance
     node_r2_scores = {}
     for node in valid_data.keys():
-        node_r2_scores[f"val_r2_{node}"] = r2_score(valid[node], output_states[node])
-
-    mlflow.log_metric("val_loss", best_val_loss)
+        node_r2_scores[f"val_r2_{node}"] = r2_score(
+            valid[node], val_output_states[node]
+        )
+    mlflow.log_metric("best_val_loss", best_val_loss)
     mlflow.log_metrics(node_r2_scores)
 
-    output_states.to_csv(f"{output_dir}output_states.csv")
+    # Test performance
+    node_r2_scores = {}
+    node_mse = {}
+    for node in test_data.keys():
+        node_r2_scores[f"test_r2_{node}"] = r2_score(
+            test[node], test_output_states[node]
+        )
+        node_mse[f"test_mse_{node}"] = sum(
+            (np.array(test[node]) - np.array(test_output_states[node])) ** 2
+        ) / len(test)
+    mlflow.log_metrics(node_r2_scores)
+    mlflow.log_metrics(node_mse)
+    mlflow.log_metric("test_mse", sum(node_mse.values()) / len(node_mse))
+
+    # Save outputs
+    val_output_states.to_csv(f"{output_dir}valid_output_states.csv")
+    test_output_states.to_csv(f"{output_dir}test_output_states.csv")
     loss.to_csv(f"{output_dir}loss.csv")
     train.to_csv(f"{output_dir}train_data.csv")
     valid.to_csv(f"{output_dir}valid_data.csv")
+    test.to_csv(f"{output_dir}test_data.csv")
     pd.DataFrame(train_inhibitors).to_csv(f"{output_dir}train_inhibitors.csv")
     pd.DataFrame(valid_inhibitors).to_csv(f"{output_dir}valid_inhibitors.csv")
+    pd.DataFrame(test_inhibitors).to_csv(f"{output_dir}test_inhibitors.csv")
 
 
 @click.command()
@@ -130,6 +185,8 @@ def main(config_path):
 
     with mlflow_tunnel(host="mlflow"):
         mlflow.set_tracking_uri("http://localhost:5000")
+        mlflow.set_experiment(config["experiment_name"])
+        mlflow.log_params({x: config[x] for x in config if x not in ["data_file"]})
         train_network(**config)
 
 
