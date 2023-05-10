@@ -1,4 +1,5 @@
-from sklearn.model_selection import ParameterSampler, ParameterGrid
+from sklearn.model_selection import ParameterSampler, ParameterGrid, KFold
+import numpy as np
 import json
 import os
 
@@ -13,6 +14,7 @@ def create_and_save_configs(sampled_params, base_config, i):
 
     config["output_dir"] = f"{base_config['output_dir']}{i}/"
     config["checkpoint_path"] = f"{base_config['checkpoint_path']}{i}/"
+    config["param_setting"] = i
 
     try:
         os.mkdir(config["output_dir"])
@@ -20,8 +22,16 @@ def create_and_save_configs(sampled_params, base_config, i):
         print("Directory already exists")
 
     config["data_file"] = [
-        f"/dccstor/ipc1/CAR/DREAM/DREAMdata/{cl}.csv"
+        f"/dccstor/ipc1/CAR/DREAM/DREAMdata/Time_aligned_per_cell_line/{cl}.csv"
         for cl in sampled_params["cell_lines"]
+    ]
+    # config["valid_cell_lines"] = [
+    #     f"/dccstor/ipc1/CAR/DREAM/DREAMdata/Time_aligned_per_cell_line/{cl}.csv"
+    #     for cl in sampled_params["valid_cell_lines"]
+    # ]
+    config["test_cell_lines"] = [
+        f"/dccstor/ipc1/CAR/DREAM/DREAMdata/{cl}.csv"
+        for cl in sampled_params["test_cell_lines"]
     ]
     config["learning_rate"] = sampled_params["learning_rate"]
     config["n_epochs"] = sampled_params["n_epochs"]
@@ -38,95 +48,66 @@ def main(base_config, param_grid):
     param_list = list(ParameterGrid(param_grid))
 
     for i, params in enumerate(param_list):
-        create_and_save_configs(params, base_config, i)
+        kf = KFold(n_splits=5, random_state=421, shuffle=True)
+        for j, (train_idx, valid_idx) in enumerate(kf.split(params["cell_lines"])):
+            cv_params = params.copy()
+            # train_cl = list(np.array(params["cell_lines"])[train_idx])
+            valid_cl = list(np.array(params["cell_lines"])[valid_idx])
+
+            # cv_params["cell_lines"] = train_cl
+            cv_params["valid_cell_lines"] = valid_cl
+            create_and_save_configs(cv_params, base_config, f"{i}_{j}")
 
 
 if __name__ == "__main__":
     param_grid = {
         "cell_lines": [
             [
-                "HCC1428",
-                "HCC70",
-                # "AU565", # Test
-                "HCC202",
                 "BT20",
-                "MDAMB415",
-                "HCC2157",
-                "MCF10F",
-                # "MDAMB436",
                 "BT474",
-                "CAMA1",
-                "Hs578T",
-                "MCF7",
-                "MDAMB175VII",
-                "MCF10A",
-                "UACC812",
-                "ZR751",
-                "ZR7530",
-                "CAL120",
-                "HCC3153",
-                # "EFM19",
-                "CAL51",
-                # "MACLS2",
-                "ZR75B",
-                "CAL851",
-                "EFM192A",
-                "HBL100",
-                # "LY2",
-                "MPE600",
+                "BT549",
                 "CAL148",
-                "HDQP1",
-                "HCC1143",
-                "EVSAT",
-                "MDAMB157",
-                # "HCC2218",
-                "HCC1599",
-                "HCC2185",
+                "CAL51",
+                "CAL851",
                 "DU4475",
-                "OCUBM",
-                "184B5",
-                "UACC3199",
-                "184A1",
-                "JIMT1",
-                "KPL1",
-                "MX1",
-                "MFM223",
-                "BT483",
-                "MDAMB453",
+                "EFM192A",
+                "EVSAT",
+                "HBL100",
                 "HCC1187",
+                "HCC1395",
                 "HCC1419",
                 "HCC1500",
-                "HCC1395",
-                "HCC1806",
-                "HCC1937",
-                "BT549",
-                "HCC1954",
-                "MDAMB231",
-                "MCF12A",
-                "MDAkb2",
-                "MDAMB468",
-                "MDAMB134VI",
-                "SKBR3",
-                "HCC38",
-                "MDAMB361",
                 "HCC1569",
-                "UACC893",
+                "HCC1599",
+                "HCC1937",
+                "HCC1954",
+                "HCC2185",
+                "HCC3153",
+                "HCC38",
+                "HCC70",
+                "HDQP1",
+                "JIMT1",
+                "MCF7",
+                "MDAMB134VI",
+                "MDAMB157",
+                "MDAMB175VII",
+                "MDAMB361",
+                "MDAMB415",
+                "MDAMB453",
+                "MFM223",
+                "MPE600",
+                "MX1",
+                "OCUBM",
                 "T47D",
+                "UACC812",
+                "UACC893",
+                "ZR7530",
             ]
         ],
         # "train_treatments": [],
         # "valid_treatments": ["iEGFR", "iMEK", "iPI3K", "iPKC"],
-        "valid_cell_lines": [
-            [
-                "MCF12A",
-                "HCC38",
-                "T47D",
-                "UACC812",
-                "EFM192A",
-                "MDAMB468",
-                "JIMT1",
-            ]
-        ],
+        # "valid_cell_lines": [],
+        "test_cell_lines": [["AU565", "EFM19", "HCC2218", "LY2", "MACLS2", "MDAMB436"]],
         "learning_rate": [0.01, 0.005, 0.2],
         "n_epochs": [10, 50, 100],
         "batch_size": [10, 300, 1000],
@@ -153,6 +134,7 @@ if __name__ == "__main__":
         "n_epochs": 20,
         "batch_size": 300,
         "checkpoint_path": "/dccstor/ipc1/CAR/DREAM/Model/Test/MEK_FAK_ERK/",
+        "experiment_name": "MEK_FAK_ERK",
     }
 
     main(base_config=base_config, param_grid=param_grid)

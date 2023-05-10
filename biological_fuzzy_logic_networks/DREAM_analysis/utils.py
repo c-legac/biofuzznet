@@ -67,7 +67,12 @@ def prepare_cell_line_data(
 
 
 def split_data(
-    data, train_treatments, valid_treatments, train_cell_lines, valid_cell_lines
+    data,
+    train_treatments,
+    valid_treatments,
+    train_cell_lines,
+    valid_cell_lines,
+    do_split: bool = True,
 ):
     treatment_split = True
     cell_line_split = True
@@ -76,7 +81,10 @@ def split_data(
     if train_cell_lines is None and valid_cell_lines is None:
         cell_line_split = False
 
-    if not treatment_split and not cell_line_split:
+    if not do_split:
+        train = data.copy()
+        valid = None
+    elif not treatment_split and not cell_line_split and do_split:
         train, valid = train_test_split(data)
 
     else:
@@ -199,58 +207,81 @@ def cl_data_to_input(
     add_root_values: bool = True,
     input_value: float = 1,
     root_nodes: List[str] = ["EGF", "SERUM"],
+    do_split: bool = True,
 ):
     markers = [c for c in data.columns if c in model.nodes()]
 
     data = data.dropna(subset=markers, axis=0)
 
     train, valid = split_data(
-        data, train_treatments, valid_treatments, train_cell_lines, valid_cell_lines
+        data,
+        train_treatments,
+        valid_treatments,
+        train_cell_lines,
+        valid_cell_lines,
+        do_split=do_split,
     )
-    if minmaxscale:
-        scaler = MinMaxScaler()
-        scaler.fit(train[markers])
+    if isinstance(minmaxscale, bool):
+        if minmaxscale:
+            scaler = MinMaxScaler()
+            scaler.fit(train[markers])
+            train[markers] = scaler.transform(train[markers])
+            if valid is not None:
+                valid[markers] = scaler.transform(valid[markers])
+        else:
+            scaler = None
+    elif minmaxscale is not None:
+        scaler = minmaxscale
         train[markers] = scaler.transform(train[markers])
-        valid[markers] = scaler.transform(valid[markers])
+        if valid is not None:
+            valid[markers] = scaler.transform(valid[markers])
+    else:
+        scaler = None
     if add_root_values:
         train.loc[:, root_nodes] = input_value
-        valid.loc[:, root_nodes] = input_value
+        if valid is not None:
+            valid.loc[:, root_nodes] = input_value
 
     train_dict = train.to_dict("list")
-    valid_dict = valid.to_dict("list")
     train_data = {
         k: DoubleTensor(v) for k, v in train_dict.items() if k in model.nodes()
     }
-    valid_data = {
-        k: DoubleTensor(v) for k, v in valid_dict.items() if k in model.nodes()
-    }
-
     train_inhibitors = {
         m1: DoubleTensor(
             [inhibition_value if m == m1 else 1.0 for m in train_dict["inhibitor"]]
         )
         for m1 in model.nodes()
     }
-    valid_inhibitors = {
-        m1: DoubleTensor(
-            [inhibition_value if m == m1 else 1.0 for m in valid_dict["inhibitor"]]
-        )
-        for m1 in model.nodes()
-    }
-
     train_input = {node: train_data[node] for node in model.root_nodes}
-    valid_input = {node: valid_data[node] for node in model.root_nodes}
 
-    return (
-        train_data,
-        valid_data,
-        train_inhibitors,
-        valid_inhibitors,
-        train_input,
-        valid_input,
-        train,
-        valid,
-    )
+    if valid is not None:
+        valid_dict = valid.to_dict("list")
+
+        valid_data = {
+            k: DoubleTensor(v) for k, v in valid_dict.items() if k in model.nodes()
+        }
+
+        valid_inhibitors = {
+            m1: DoubleTensor(
+                [inhibition_value if m == m1 else 1.0 for m in valid_dict["inhibitor"]]
+            )
+            for m1 in model.nodes()
+        }
+        valid_input = {node: valid_data[node] for node in model.root_nodes}
+
+        return (
+            train_data,
+            valid_data,
+            train_inhibitors,
+            valid_inhibitors,
+            train_input,
+            valid_input,
+            train,
+            valid,
+            scaler,
+        )
+    else:
+        return (train_data, train_inhibitors, train_input, train, scaler)
 
 
 def inhibitor_mapping(reverse: bool = False):

@@ -209,6 +209,7 @@ class DREAMMixIn:
         epochs: int,
         batch_size: int,
         learning_rate: float,
+        logger,
         optim_wrapper=torch.optim.Adam,
         convergence_check: bool = False,
         save_checkpoint: bool = True,
@@ -306,6 +307,7 @@ class DREAMMixIn:
                 # Update the parameters
                 optim.step()
                 # We save metrics with their time to be able to compare training vs validation even though they are not logged with the same frequency
+                logger.log_metric("train_loss", loss.detach().item())
                 losses = pd.concat(
                     [
                         losses,
@@ -353,6 +355,7 @@ class DREAMMixIn:
                     )
 
                 # No need to detach since there are no gradients
+                logger.log_metric("valid_loss", valid_loss.item())
                 losses = pd.concat(
                     [
                         losses,
