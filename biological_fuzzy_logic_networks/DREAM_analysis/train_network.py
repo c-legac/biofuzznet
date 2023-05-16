@@ -12,6 +12,7 @@ import mlflow
 import click
 import json
 import torch
+import pickle as pickle
 
 
 def train_network(
@@ -165,6 +166,8 @@ def train_network(
     mlflow.log_metric("test_mse", sum(node_mse.values()) / len(node_mse))
 
     # Save outputs
+    with open(f"{output_dir}scaler.pkl", "wb") as f:
+        pickle.dump(scaler, f)
     val_output_states.to_csv(f"{output_dir}valid_output_states.csv")
     test_output_states.to_csv(f"{output_dir}test_output_states.csv")
     loss.to_csv(f"{output_dir}loss.csv")

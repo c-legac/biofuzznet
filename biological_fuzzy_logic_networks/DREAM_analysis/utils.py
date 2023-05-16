@@ -39,6 +39,7 @@ def prepare_cell_line_data(
     time_point: int = 9,
     non_marker_cols: List[str] = ["treatment", "cell_line", "time", "cellID", "fileID"],
     treatment_col_name: str = "treatment",
+    **extras,
 ):
     if isinstance(data_file, str):
         cl_data = pd.read_csv(data_file)
@@ -208,6 +209,7 @@ def cl_data_to_input(
     input_value: float = 1,
     root_nodes: List[str] = ["EGF", "SERUM"],
     do_split: bool = True,
+    **extras,
 ):
     markers = [c for c in data.columns if c in model.nodes()]
 
