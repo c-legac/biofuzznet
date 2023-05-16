@@ -22,7 +22,7 @@ def create_and_save_configs(sampled_params, base_config, i):
         print("Directory already exists")
 
     config["data_file"] = [
-        f"/dccstor/ipc1/CAR/DREAM/DREAMdata/Time_aligned_per_cell_line/{cl}.csv"
+        f"/dccstor/ipc1/CAR/DREAM/DREAMdata/Time_aligned_per_cell_line/CL_incl_test/{cl}.csv"
         for cl in sampled_params["cell_lines"]
     ]
     # config["valid_cell_lines"] = [
@@ -30,7 +30,7 @@ def create_and_save_configs(sampled_params, base_config, i):
     #     for cl in sampled_params["valid_cell_lines"]
     # ]
     config["test_cell_lines"] = [
-        f"/dccstor/ipc1/CAR/DREAM/DREAMdata/{cl}.csv"
+        f"/dccstor/ipc1/CAR/DREAM/DREAMdata/Time_aligned_per_cell_line/CL_incl_test/{cl}.csv"
         for cl in sampled_params["test_cell_lines"]
     ]
     config["learning_rate"] = sampled_params["learning_rate"]
@@ -65,7 +65,6 @@ if __name__ == "__main__":
             [
                 "BT20",
                 "BT474",
-                "BT549",
                 "CAL148",
                 "CAL51",
                 "CAL851",
@@ -73,34 +72,20 @@ if __name__ == "__main__":
                 "EFM192A",
                 "EVSAT",
                 "HBL100",
-                "HCC1187",
-                "HCC1395",
-                "HCC1419",
-                "HCC1500",
-                "HCC1569",
                 "HCC1599",
-                "HCC1937",
-                "HCC1954",
                 "HCC2185",
                 "HCC3153",
-                "HCC38",
-                "HCC70",
                 "HDQP1",
                 "JIMT1",
                 "MCF7",
-                "MDAMB134VI",
                 "MDAMB157",
                 "MDAMB175VII",
-                "MDAMB361",
                 "MDAMB415",
-                "MDAMB453",
                 "MFM223",
                 "MPE600",
                 "MX1",
                 "OCUBM",
-                "T47D",
                 "UACC812",
-                "UACC893",
                 "ZR7530",
             ]
         ],
@@ -108,33 +93,39 @@ if __name__ == "__main__":
         # "valid_treatments": ["iEGFR", "iMEK", "iPI3K", "iPKC"],
         # "valid_cell_lines": [],
         "test_cell_lines": [["AU565", "EFM19", "HCC2218", "LY2", "MACLS2", "MDAMB436"]],
-        "learning_rate": [0.01, 0.005, 0.2],
+        "learning_rate": [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1],
         "n_epochs": [10, 50, 100],
-        "batch_size": [10, 300, 1000],
+        "batch_size": [1000, 5000, 10000, 50000],
     }
 
     base_config = {
-        "pkn_sif": "/dccstor/ipc1/CAR/DREAM/DREAMdata/MEK_FAK_ERK.sif",
+        "pkn_sif": "/dccstor/ipc1/CAR/DREAM/DREAMdata/PKN_subnetwork.sif",
         "network_class": "DREAMBioFuzzNet",
         "data_file": "",
-        "output_dir": "/dccstor/ipc1/CAR/DREAM/Model/Test/MEK_FAK_ERK/",
+        "output_dir": "/dccstor/ipc1/CAR/DREAM/Model/Test/Subnetwork/",
         "time_point": 9,
         "non_marker_cols": ["treatment", "cell_line", "time", "cellID", "fileID"],
         "treatment_col_name": "treatment",
+        "sample_n_cells": 500,
+        "filter_starved_stim": True,
         "minmaxscale": True,
-        "add_root_values": False,
+        "add_root_values": True,
+        "root_nodes": ["EGFR"],
         "input_value": 1,
         "train_treatments": None,
         "valid_treatments": None,
         "train_cell_lines": None,
         "valid_cell_lines": None,
         "convergence_check": False,
+        "replace_zero_inputs": 1e-9,
         "inhibition_value": 1.0,
         "learning_rate": 1e-3,
         "n_epochs": 20,
         "batch_size": 300,
-        "checkpoint_path": "/dccstor/ipc1/CAR/DREAM/Model/Test/MEK_FAK_ERK/",
-        "experiment_name": "MEK_FAK_ERK",
+        "tensors_to_cuda": True,
+        "checkpoint_path": "/dccstor/ipc1/CAR/DREAM/Model/Test/Subnetwork/",
+        "experiment_name": "Subnetwork",
+        "optimizer": "SGD",
     }
 
     main(base_config=base_config, param_grid=param_grid)

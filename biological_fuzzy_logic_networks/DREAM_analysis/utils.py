@@ -1,45 +1,71 @@
-import numpy as np
-from biological_fuzzy_logic_networks.biomixnet import BioMixNet
-from biological_fuzzy_logic_networks.biofuzznet import BioFuzzNet
-from biological_fuzzy_logic_networks.utils import read_sif
+from typing import List, Union, Type, Dict
+
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MinMaxScaler, QuantileTransformer
+from torch import DoubleTensor
+
 from biological_fuzzy_logic_networks.DREAM.DREAMBioFuzzNet import (
     DREAMBioFuzzNet,
     DREAMBioMixNet,
 )
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.model_selection import train_test_split
-from torch import DoubleTensor
-import pandas as pd
-from typing import List, Union
+from biological_fuzzy_logic_networks.DREAM_analysis.scalers import ClippingScaler
+from biological_fuzzy_logic_networks.biofuzznet import BioFuzzNet
+from biological_fuzzy_logic_networks.biomixnet import BioMixNet
+from biological_fuzzy_logic_networks.label_shuffle import create_shuffled_subclass
+from biological_fuzzy_logic_networks.utils import read_sif
 
 
-def create_bfz(pkn_sif: str, network_class: str):
-    nodes, edges = read_sif(pkn_sif)
-    if network_class.lower() == "dreambiofuzznet":
-        model = DREAMBioFuzzNet(nodes, edges)
-
-    elif network_class.lower() == "dreambiomixnet":
-        model = DREAMBioMixNet(nodes, edges)
-
-    elif network_class.lower() == "biomixnet":
-        model = BioMixNet(nodes, edges)
-    elif network_class.lower() == "biofuzznet":
-        model = BioFuzzNet(nodes, edges)
+def get_scaler(scale_type):
+    if scale_type.lower() == "minmax":
+        scaler = MinMaxScaler()
+    elif scale_type == "quantile":
+        scaler = QuantileTransformer()
+    elif scale_type == "clippping":
+        scaler = ClippingScaler()
     else:
+        raise Exception(
+            f"Scaler {scale_type} not found use one of minmax, clipping or quantile"
+        )
+
+    return scaler
+
+
+def create_bfz(pkn_sif: str, network_class: str, shuffle_nodes: bool = False):
+    nodes, edges = read_sif(pkn_sif)
+    class_dispatch: Dict[str, Type[BioFuzzNet]] = {
+        "dreambiofuzznet": DREAMBioFuzzNet,
+        "dreambiomixnet": DREAMBioMixNet,
+        "biomixnet": BioMixNet,
+        "biofuzznet": BioFuzzNet,
+    }
+
+    try:
+        selected_cls = class_dispatch[network_class.lower()]
+    except KeyError as e:
         raise Exception(
             "network_class arguement not recognised, should be one of",
             "DREAMBioFuzzNet, DREAMBioMixNet, BioFuzzNet, BioMixNet",
-        )
+        ) from e
 
+    if shuffle_nodes:
+        selected_cls = create_shuffled_subclass(selected_cls)
+
+    model = selected_cls(nodes=nodes, edges=edges)
     return model
 
 
 def prepare_cell_line_data(
     data_file: Union[List, str],
     time_point: int = 9,
+    sel_condition: str = None,
     non_marker_cols: List[str] = ["treatment", "cell_line", "time", "cellID", "fileID"],
     treatment_col_name: str = "treatment",
+    sample_n_cells: Union[int, bool] = False,
+    filter_starved_stim: bool = True,
+    **extras,
 ):
+    print(type(data_file))
     if isinstance(data_file, str):
         cl_data = pd.read_csv(data_file)
     elif isinstance(data_file, List):
@@ -49,13 +75,32 @@ def prepare_cell_line_data(
             data.append(d)
         cl_data = pd.concat(data)
     else:
-        Exception("`data_file` should be a string or list of strings")
+        raise Exception("`data_file` should be a string or list of strings")
 
     print(cl_data["cell_line"].unique())
     data_to_nodes_map = data_to_nodes_mapping()
     inhibitor_map = inhibitor_mapping()
 
     cl_data = cl_data[cl_data["time"] == time_point]
+    if sel_condition:
+        cl_data = cl_data[cl_data[treatment_col_name] == sel_condition]
+
+    if filter_starved_stim:
+        cl_data = cl_data[cl_data["treatment"] != "full"]
+        cl_data = cl_data[cl_data["time"] != 0]
+
+    if sample_n_cells:
+        replacement = (
+            False
+            if all(
+                cl_data.groupby(["cell_line", "treatment", "time"]).size()
+                > sample_n_cells
+            )
+            else True
+        )
+        cl_data = cl_data.groupby(["cell_line", "treatment", "time"]).sample(
+            n=sample_n_cells, replace=replacement
+        )
 
     cl_data.loc[:, "inhibitor"] = [
         inhibitor_map[treatment] for treatment in cl_data[treatment_col_name]
@@ -74,6 +119,7 @@ def split_data(
     valid_cell_lines,
     do_split: bool = True,
 ):
+
     treatment_split = True
     cell_line_split = True
     if train_treatments is None and valid_treatments is None:
@@ -203,13 +249,24 @@ def cl_data_to_input(
     train_cell_lines: List[str] = None,
     valid_cell_lines: List[str] = None,
     inhibition_value: Union[int, float] = 1.0,
-    minmaxscale: bool = True,
+    scale_type: str = "minmax",
+    scaler=None,
     add_root_values: bool = True,
     input_value: float = 1,
     root_nodes: List[str] = ["EGF", "SERUM"],
     do_split: bool = True,
+    replace_zero_inputs: Union[bool, float] = False,
+    **extras,
 ):
     markers = [c for c in data.columns if c in model.nodes()]
+    if isinstance(replace_zero_inputs, float):
+        do_replace = True
+        replace_value = replace_zero_inputs
+    elif replace_zero_inputs:
+        do_replace = True
+        replace_value = 1e-9
+    else:
+        do_replace = False
 
     data = data.dropna(subset=markers, axis=0)
 
@@ -221,26 +278,39 @@ def cl_data_to_input(
         valid_cell_lines,
         do_split=do_split,
     )
-    if isinstance(minmaxscale, bool):
-        if minmaxscale:
-            scaler = MinMaxScaler()
-            scaler.fit(train[markers])
-            train[markers] = scaler.transform(train[markers])
-            if valid is not None:
-                valid[markers] = scaler.transform(valid[markers])
-        else:
-            scaler = None
-    elif minmaxscale is not None:
-        scaler = minmaxscale
+
+    if not scaler and not scale_type:
+        raise Warning("No scaler type or scaler provided, using unscaled data")
+    if scaler:
+        if scaler and scale_type:
+            raise Warning("Scaler provided, ignoring `scale type`")
+        train[markers] = scaler.transform(train[markers])
+        t = train[markers]
+        t[t < 0] = 0
+        train[markers] = t
+        if valid is not None:
+            valid[markers] = scaler.transform(valid[markers])
+            t = valid[markers]
+            t[t < 0] = 0
+            valid[markers] = t
+    elif not scaler and scale_type:
+        scaler = get_scaler(scale_type)
+        scaler.fit(train[markers])
         train[markers] = scaler.transform(train[markers])
         if valid is not None:
             valid[markers] = scaler.transform(valid[markers])
-    else:
-        scaler = None
+            t = valid[markers]
+            t[t < 0] = 0
+            valid[markers] = t
+
     if add_root_values:
         train.loc[:, root_nodes] = input_value
         if valid is not None:
             valid.loc[:, root_nodes] = input_value
+
+    if do_replace:
+        for node in model.root_nodes:
+            train.loc[train[node] == 0, node] = replace_value
 
     train_dict = train.to_dict("list")
     train_data = {
@@ -255,6 +325,9 @@ def cl_data_to_input(
     train_input = {node: train_data[node] for node in model.root_nodes}
 
     if valid is not None:
+        if do_replace:
+            for node in model.root_nodes:
+                valid.loc[valid[node] == 0, node] = replace_value
         valid_dict = valid.to_dict("list")
 
         valid_data = {
@@ -286,12 +359,13 @@ def cl_data_to_input(
 
 def inhibitor_mapping(reverse: bool = False):
     inhibitor_mapping = {
-        "EGF": np.nan,
-        "full": np.nan,
+        "EGF": "None",
+        "full": "None",
         "iEGFR": "EGFR",
         "iMEK": "MEK12",
         "iPI3K": "PI3K",
         "iPKC": "PKC",
+        "imTOR": "mTOR",
     }
 
     if reverse:

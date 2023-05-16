@@ -12,20 +12,40 @@ import mlflow
 import click
 import json
 import torch
+import pickle as pickle
+import os
+
+
+def get_environ_var(env_var_name, fail_gracefully=True):
+    try:
+        assert (
+            env_var_name in os.environ
+        ), f"Environment variable ${env_var_name} not set, are you on a CCC job?"
+        var = os.environ[env_var_name]
+    except AssertionError:
+        if not fail_gracefully:
+            raise
+        else:
+            var = None
+
+    return var
 
 
 def train_network(
     pkn_sif: str,
     network_class: str,
-    data_file: str,
+    data_file: Union[List, str],
     output_dir: str,
     time_point: int = 9,
     non_marker_cols: List[str] = ["treatment", "cell_line", "time", "cellID", "fileID"],
     treatment_col_name: str = "treatment",
+    sample_n_cells: Union[int, bool] = False,
+    filter_starved_stim: bool = True,
     minmaxscale: bool = True,
     add_root_values: bool = True,
     input_value: float = 1,
     root_nodes: List[str] = ["EGF", "SERUM"],
+    replace_zero_inputs: Union[bool, float] = False,
     train_treatments: List[str] = None,
     valid_treatments: List[str] = None,
     train_cell_lines: List[str] = None,
@@ -37,6 +57,7 @@ def train_network(
     batch_size: int = 300,
     checkpoint_path: str = None,
     convergence_check: bool = False,
+    tensors_to_cuda: bool = True,
     **extras,
 ):
     model = create_bfz(pkn_sif, network_class)
@@ -45,6 +66,8 @@ def train_network(
         time_point=time_point,
         non_marker_cols=non_marker_cols,
         treatment_col_name=treatment_col_name,
+        filter_starved_stim=filter_starved_stim,
+        sample_n_cells=sample_n_cells,
     )
 
     # Load train and valid data
@@ -70,6 +93,8 @@ def train_network(
         add_root_values=add_root_values,
         input_value=input_value,
         root_nodes=root_nodes,
+        replace_zero_inputs=replace_zero_inputs,
+        balance_data=True,
     )
 
     # Load test data
@@ -79,6 +104,8 @@ def train_network(
         time_point=time_point,
         non_marker_cols=non_marker_cols,
         treatment_col_name=treatment_col_name,
+        sample_n_cells=False,
+        filter_starved_stim=filter_starved_stim,
     )
 
     (test_data, test_inhibitors, test_input, test, scaler) = cl_data_to_input(
@@ -94,6 +121,8 @@ def train_network(
         input_value=input_value,
         root_nodes=root_nodes,
         do_split=False,
+        replace_zero_inputs=replace_zero_inputs,
+        balance_data=False,
     )
 
     # Optimize model
@@ -110,6 +139,7 @@ def train_network(
         checkpoint_path=checkpoint_path,
         convergence_check=convergence_check,
         logger=mlflow,
+        tensors_to_cuda=tensors_to_cuda,
     )
 
     if convergence_check:
@@ -129,12 +159,14 @@ def train_network(
     model = create_bfz(pkn_sif, network_class)
     model.load_from_checkpoint(ckpt["model_state_dict"])
     with torch.no_grad():
+        model.initialise_random_truth_and_output(len(valid))
         model.set_network_ground_truth(valid_data)
         model.sequential_update(model.root_nodes, valid_inhibitors)
         val_output_states = pd.DataFrame(
             {k: v.numpy() for k, v in model.output_states.items()}
         )
 
+        model.initialise_random_truth_and_output(len(test))
         model.set_network_ground_truth(test_data)
         model.sequential_update(model.root_nodes, test_inhibitors)
         test_output_states = pd.DataFrame(
@@ -147,6 +179,7 @@ def train_network(
         node_r2_scores[f"val_r2_{node}"] = r2_score(
             valid[node], val_output_states[node]
         )
+
     mlflow.log_metric("best_val_loss", best_val_loss)
     mlflow.log_metrics(node_r2_scores)
 
@@ -165,6 +198,8 @@ def train_network(
     mlflow.log_metric("test_mse", sum(node_mse.values()) / len(node_mse))
 
     # Save outputs
+    with open(f"{output_dir}scaler.pkl", "wb") as f:
+        pickle.dump(scaler, f)
     val_output_states.to_csv(f"{output_dir}valid_output_states.csv")
     test_output_states.to_csv(f"{output_dir}test_output_states.csv")
     loss.to_csv(f"{output_dir}loss.csv")
@@ -183,10 +218,27 @@ def main(config_path):
         config = json.load(f)
     f.close()
 
-    with mlflow_tunnel(host="mlflow"):
-        mlflow.set_tracking_uri("http://localhost:5000")
+    with mlflow_tunnel(host="mlflow") as tunnel:
+        remote_port = tunnel[5000]
+        mlflow.set_tracking_uri(f"http://localhost:{remote_port}")
         mlflow.set_experiment(config["experiment_name"])
-        mlflow.log_params({x: config[x] for x in config if x not in ["data_file"]})
+
+        job_id = get_environ_var("LSB_JOBID", fail_gracefully=True)
+        mlflow.log_param("ccc_job_id", job_id)
+        log_params = {
+            x: [y.split("/")[-1] for y in config[x]]
+            if x
+            in [
+                "valid_cell_lines",
+                "test_cell_lines",
+                "train_cell_lines",
+            ]
+            and not config[x] is None
+            else config[x]
+            for x in config
+        }
+        log_params = {x: y for x, y in log_params.items() if len(str(y)) < 500}
+        mlflow.log_params(log_params)
         train_network(**config)
 
 

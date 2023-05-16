@@ -20,7 +20,10 @@ def create_and_save_configs(sampled_params, base_config, i):
 
     config[
         "data_file"
-    ] = f"/dccstor/ipc1/CAR/DREAM/DREAMdata/{sampled_params['cell_lines']}.csv"
+    ] = f"/dccstor/ipc1/CAR/DREAM/DREAMdata/Time_aligned_per_cell_line/{sampled_params['cell_lines']}.csv"
+    config[
+        "test_cell_lines"
+    ] = f"/dccstor/ipc1/CAR/DREAM/DREAMdata/Time_aligned_per_cell_line/{sampled_params['cell_lines']}.csv"
 
     with open(f"{config['output_dir']}{i}_config.json", "w") as fp:
         json.dump(config, fp)
@@ -30,7 +33,7 @@ def create_and_save_configs(sampled_params, base_config, i):
 
 
 def main(base_config, param_grid):
-    param_list = list(ParameterGrid(param_grid))
+    param_list = list(ParameterSampler(param_grid, 15))
 
     for i, params in enumerate(param_list):
         create_and_save_configs(params, base_config, i)
@@ -113,11 +116,11 @@ if __name__ == "__main__":
         # "valid_cell_lines": [],
         # "learning_rate": [0.01, 0.005, 0.2],
         # "n_epochs": [10, 50, 100],
-        # "batch_size": [10, 300, 1000],
+        "batch_size": [300, 1000, 10000],
     }
 
     base_config = {
-        "pkn_sif": "/dccstor/ipc1/CAR/DREAM/DREAMdata/DREAM_PKN_for_BFZ_input.sif",
+        "pkn_sif": "/dccstor/ipc1/CAR/DREAM/DREAMdata/PKN_Alice.sif",
         "network_class": "DREAMBioFuzzNet",
         "data_file": "",
         "output_dir": "/dccstor/ipc1/CAR/DREAM/Model/Test/Loops/",
@@ -137,6 +140,7 @@ if __name__ == "__main__":
         "n_epochs": 20,
         "batch_size": 300,
         "checkpoint_path": "/dccstor/ipc1/CAR/DREAM/Model/Test/Loops/",
+        "experiment_name": "loops_test",
     }
 
     main(base_config=base_config, param_grid=param_grid)

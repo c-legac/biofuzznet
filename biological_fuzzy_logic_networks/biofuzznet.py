@@ -8,24 +8,25 @@ ALL RIGHTS RESERVED
 # modules defined in biofuzznet/
 # Pylance throws a reportMissingImports but thos actually works.
 
+import copy
+import warnings
+from datetime import datetime
+from typing import Optional
+
+import pandas as pd
+import torch
+
+# external python modules
+from networkx.classes.digraph import DiGraph
+from tqdm import tqdm
+
+from biological_fuzzy_logic_networks.Hill_function import HillTransferFunction
+from biological_fuzzy_logic_networks.biofuzzdataset import BioFuzzDataset
 from biological_fuzzy_logic_networks.utils import (
     has_cycle,
     read_sif,
     MSE_loss,
 )  # , weighted_loss
-from biological_fuzzy_logic_networks.Hill_function import HillTransferFunction
-from biological_fuzzy_logic_networks.biofuzzdataset import BioFuzzDataset
-
-
-# external python modules
-from networkx.classes.digraph import DiGraph
-import torch
-import pandas as pd
-from tqdm import tqdm
-from datetime import datetime
-import copy
-from typing import Optional
-import warnings
 
 
 class BioFuzzNet(DiGraph):
@@ -387,7 +388,7 @@ class BioFuzzNet(DiGraph):
             return state_to_propagate
         if self.edges()[edge]["edge_type"] == "transfer_function":
             # The preceding state has to go through the Hill layer
-            state_to_propagate = self.edges()[edge]["layer"].forward(
+            state_to_propagate = self.edges()[edge]["layer"](
                 self.nodes[edge[0]]["output_state"]
             )
             return state_to_propagate
@@ -531,7 +532,7 @@ class BioFuzzNet(DiGraph):
 
         current_nodes = copy.deepcopy(input_nodes)
         non_updated_nodes = [n for n in self.nodes()]
-        while non_updated_nodes != []:
+        while len(non_updated_nodes) > 0:
             # curr_nodes is a queue, hence FIFO (first in first out)
             # when popping the first item, we obtain the one that has been in the queue the longest
             curr_node = current_nodes.pop(0)
@@ -542,7 +543,7 @@ class BioFuzzNet(DiGraph):
                     p for p in self.predecessors(curr_node) if p in non_updated_nodes
                 ]
                 # Check if parents are updated
-                if non_updated_parents != []:
+                if len(non_updated_parents) > 0:
                     for p in non_updated_parents:
                         # Check if there is a loop to which both the parent and the current node belong
                         for cycle in loop_status[1]:
@@ -551,7 +552,7 @@ class BioFuzzNet(DiGraph):
                                 non_updated_parents.remove(p)
                                 break
                     # Now non_updated_parents only contains parents that are not part of a loop to which curr_node belongs
-                    if non_updated_parents != []:
+                    if len(non_updated_parents) > 0:
                         can_update = False
                         for p in non_updated_parents:
                             current_nodes.append(p)
@@ -610,7 +611,7 @@ class BioFuzzNet(DiGraph):
             non_updated_nodes = [n for n in self.nodes()]
             safeguard = 0
             node_number = len([n for n in self.nodes()])
-            while non_updated_nodes != []:
+            while len(non_updated_nodes) > 0:
                 safeguard += 1
                 if safeguard > 10 * node_number:
                     print(
@@ -625,7 +626,7 @@ class BioFuzzNet(DiGraph):
                     parents = [pred for pred in self.predecessors(curr_node)]
                     non_updated_parents = [p for p in parents if p in non_updated_nodes]
                     # If one parent is not updated yet, then we cannot update
-                    if non_updated_parents != []:
+                    if len(non_updated_parents) > 0:
                         for p in non_updated_parents:
                             # curr_nodes is FIFO: we first append the parents then the child
                             current_nodes.append(p)
