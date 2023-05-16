@@ -107,7 +107,6 @@ class DREAMMixIn:
                 )
             last_states = {}
             for i in range(int(length)):
-                print(i)
                 states[length + i] = self.update_one_timestep_cyclic_network(
                     input_nodes, inhibition, loop_status, convergence_check
                 )
@@ -180,7 +179,6 @@ class DREAMMixIn:
                     # Then we reappend the current visited node
                     current_nodes.append(curr_node)
                 else:  # Here we can update
-                    print(curr_node)
                     self.update_fuzzy_node(curr_node, inhibition)
                     non_updated_nodes.remove(curr_node)
                     cont = True
