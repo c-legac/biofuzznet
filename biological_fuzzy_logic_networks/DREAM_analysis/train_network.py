@@ -13,6 +13,22 @@ import click
 import json
 import torch
 import pickle as pickle
+import os
+
+
+def get_environ_var(env_var_name, fail_gracefully=True):
+    try:
+        assert (
+            env_var_name in os.environ
+        ), f"Environment variable ${env_var_name} not set, are you on a CCC job?"
+        var = os.environ[env_var_name]
+    except AssertionError:
+        if not fail_gracefully:
+            raise
+        else:
+            var = None
+
+    return var
 
 
 def train_network(
@@ -192,9 +208,13 @@ def main(config_path):
         config = json.load(f)
     f.close()
 
-    with mlflow_tunnel(host="mlflow"):
-        mlflow.set_tracking_uri("http://localhost:5000")
+    with mlflow_tunnel(host="mlflow") as tunnel:
+        remote_port = tunnel[5000]
+        mlflow.set_tracking_uri(f"http://localhost:{remote_port}")
         mlflow.set_experiment(config["experiment_name"])
+
+        job_id = get_environ_var("LSB_JOBID", fail_gracefully=True)
+        mlflow.log_param("ccc_job_id", job_id)
         mlflow.log_params({x: config[x] for x in config if x not in ["data_file"]})
         train_network(**config)
 
