@@ -108,7 +108,7 @@ if __name__ == "__main__":
         # "valid_treatments": ["iEGFR", "iMEK", "iPI3K", "iPKC"],
         # "valid_cell_lines": [],
         "test_cell_lines": [["AU565", "EFM19", "HCC2218", "LY2", "MACLS2", "MDAMB436"]],
-        "learning_rate": [0.01, 0.005, 0.2],
+        "learning_rate": [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1],
         "n_epochs": [10, 50, 100],
         "batch_size": [10000, 50000, 100000],
     }
@@ -138,6 +138,7 @@ if __name__ == "__main__":
         "tensors_to_cuda": True,
         "checkpoint_path": "/dccstor/ipc1/CAR/DREAM/Model/Test/Subnetwork/",
         "experiment_name": "Subnetwork",
+        "optimizer": "SGD",
     }
 
     main(base_config=base_config, param_grid=param_grid)

@@ -50,15 +50,12 @@ def mean_RMSE(
     return RMSE.mean()
 
 
-def get_scaler(run_folder, data_folder):
-    print(run_folder)
+def get_scaler(run_folder, data_folder, param_setting):
     ckpt = torch.load(f"{run_folder}model.pt")
-    with open(f"{run_folder}{run_folder[47:-1]}_config.json") as f:
+    with open(f"{run_folder}{param_setting}_config.json") as f:
         config = json.load(f)
     print(config["valid_cell_lines"])
-    model = create_bfz(
-        f"{data_folder}DREAMdata/MEK_FAK_ERK.sif", config["network_class"]
-    )
+    model = create_bfz(config["pkn_sif"], config["network_class"])
     model.load_from_checkpoint(ckpt["model_state_dict"])
 
     cl_data = prepare_cell_line_data(**config)
@@ -76,21 +73,15 @@ def get_scaler(run_folder, data_folder):
     ) = cl_data_to_input(
         data=cl_data,
         model=model,
-        train_treatments=config["train_treatments"],
-        valid_treatments=config["valid_treatments"],
-        train_cell_lines=config["train_cell_lines"],
-        valid_cell_lines=config["valid_cell_lines"],
-        inhibition_value=config["inhibition_value"],
-        minmaxscale=True,
-        add_root_values=config["add_root_values"],
-        input_value=1,
+        **config,
     )
 
     return scaler
 
 
-def get_test_data_formatted(run_folder, data_folder):
-    scaler = get_scaler(run_folder, data_folder)
+def get_test_data_formatted(run_base, data_folder, param_setting):
+    run_folder = f"{run_base}{param_setting}/"
+    scaler = get_scaler(run_folder, data_folder, param_setting)
 
     test_output = pd.read_csv(
         f"{run_folder}test_output_states.csv", index_col=0
@@ -100,17 +91,24 @@ def get_test_data_formatted(run_folder, data_folder):
     )
 
     test_unscaled = pd.DataFrame(
-        scaler.inverse_transform(test_output[["ERK12", "FAK", "MEK12"]]),
-        columns=test_output.columns,
+        scaler.inverse_transform(test_output[list(scaler.feature_names_in_)]),
+        columns=scaler.feature_names_in_,
         index=test_output.index,
     )
-    test_output = test_output.rename(columns={"ERK12": "p.ERK"})
+
     test_output[["treatment", "cell_line", "time", "cellID", "fileID"]] = test_data[
         ["treatment", "cell_line", "time", "cellID", "fileID"]
     ]
-    test_unscaled = test_unscaled.rename(columns={"ERK12": "p.ERK"})
     test_unscaled[["treatment", "cell_line", "time", "cellID", "fileID"]] = test_data[
         ["treatment", "cell_line", "time", "cellID", "fileID"]
     ]
 
-    return test_output, test_unscaled
+    test_data_scaled = pd.DataFrame(
+        scaler.inverse_transform(test_output[list(scaler.feature_names_in_)]),
+        columns=scaler.feature_names_in_,
+        index=test_data.index,
+    )
+    test_data_scaled[
+        ["treatment", "cell_line", "time", "cellID", "fileID"]
+    ] = test_data[["treatment", "cell_line", "time", "cellID", "fileID"]]
+    return test_output, test_unscaled, test_data_scaled
