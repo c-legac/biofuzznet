@@ -39,6 +39,7 @@ def prepare_cell_line_data(
     time_point: int = 9,
     non_marker_cols: List[str] = ["treatment", "cell_line", "time", "cellID", "fileID"],
     treatment_col_name: str = "treatment",
+    **extras,
 ):
     if isinstance(data_file, str):
         cl_data = pd.read_csv(data_file)
@@ -208,8 +209,18 @@ def cl_data_to_input(
     input_value: float = 1,
     root_nodes: List[str] = ["EGF", "SERUM"],
     do_split: bool = True,
+    replace_zero_inputs: Union[bool, float] = False,
+    **extras,
 ):
     markers = [c for c in data.columns if c in model.nodes()]
+    if isinstance(replace_zero_inputs, float):
+        do_replace = True
+        replace_value = replace_zero_inputs
+    elif replace_zero_inputs:
+        do_replace = True
+        replace_value = 1e-9
+    else:
+        do_replace = False
 
     data = data.dropna(subset=markers, axis=0)
 
@@ -228,19 +239,32 @@ def cl_data_to_input(
             train[markers] = scaler.transform(train[markers])
             if valid is not None:
                 valid[markers] = scaler.transform(valid[markers])
+                t = valid[markers]
+                t[t < 0] = 0
+                valid[markers] = t
         else:
             scaler = None
     elif minmaxscale is not None:
         scaler = minmaxscale
         train[markers] = scaler.transform(train[markers])
+        t = train[markers]
+        t[t < 0] = 0
+        train[markers] = t
         if valid is not None:
             valid[markers] = scaler.transform(valid[markers])
+            t = valid[markers]
+            t[t < 0] = 0
+            valid[markers] = t
     else:
         scaler = None
     if add_root_values:
         train.loc[:, root_nodes] = input_value
         if valid is not None:
             valid.loc[:, root_nodes] = input_value
+
+    if do_replace:
+        for node in model.root_nodes:
+            train.loc[train[node] == 0, node] = replace_value
 
     train_dict = train.to_dict("list")
     train_data = {
@@ -255,6 +279,9 @@ def cl_data_to_input(
     train_input = {node: train_data[node] for node in model.root_nodes}
 
     if valid is not None:
+        if do_replace:
+            for node in model.root_nodes:
+                valid.loc[valid[node] == 0, node] = replace_value
         valid_dict = valid.to_dict("list")
 
         valid_data = {
