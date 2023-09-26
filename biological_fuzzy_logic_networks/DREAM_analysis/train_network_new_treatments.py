@@ -48,6 +48,7 @@ def train_network(
     replace_zero_inputs: Union[bool, float] = False,
     train_treatments: List[str] = None,
     valid_treatments: List[str] = None,
+    test_treatments: List[str] = None,
     train_cell_lines: List[str] = None,
     valid_cell_lines: List[str] = None,
     test_cell_lines: List[str] = None,
@@ -99,7 +100,7 @@ def train_network(
     # Load test data
     # Test set performance
     cl_data = prepare_cell_line_data(
-        data_file=test_cell_lines,
+        data_file=data_file,
         time_point=time_point,
         non_marker_cols=non_marker_cols,
         treatment_col_name=treatment_col_name,
@@ -107,11 +108,21 @@ def train_network(
         filter_starved_stim=filter_starved_stim,
     )
 
-    (test_data, test_inhibitors, test_input, test, scaler) = cl_data_to_input(
+    (
+        _,
+        test_data,
+        _,
+        test_inhibitors,
+        _,
+        test_input,
+        _,
+        test,
+        scaler,
+    ) = cl_data_to_input(
         data=cl_data,
         model=model,
         train_treatments=train_treatments,
-        valid_treatments=valid_treatments,
+        valid_treatments=test_treatments,
         train_cell_lines=train_cell_lines,
         valid_cell_lines=valid_cell_lines,
         inhibition_value=inhibition_value,
@@ -230,12 +241,12 @@ def main(config_path):
                 "valid_cell_lines",
                 "test_cell_lines",
                 "train_cell_lines",
+                "data_file",
             ]
             and not config[x] is None
             else config[x]
             for x in config
         }
-        log_params = {x: y for x, y in log_params.items() if len(str(y)) < 500}
         mlflow.log_params(log_params)
         train_network(**config)
 

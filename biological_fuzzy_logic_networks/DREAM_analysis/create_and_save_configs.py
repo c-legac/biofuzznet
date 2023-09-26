@@ -22,7 +22,7 @@ def create_and_save_configs(sampled_params, base_config, i):
         print("Directory already exists")
 
     config["data_file"] = [
-        f"/dccstor/ipc1/CAR/DREAM/DREAMdata/Time_aligned_per_cell_line/{cl}.csv"
+        f"/dccstor/ipc1/CAR/DREAM/DREAMdata/Time_aligned_per_cell_line/CL_incl_test/{cl}.csv"
         for cl in sampled_params["cell_lines"]
     ]
     # config["valid_cell_lines"] = [
@@ -30,7 +30,7 @@ def create_and_save_configs(sampled_params, base_config, i):
     #     for cl in sampled_params["valid_cell_lines"]
     # ]
     config["test_cell_lines"] = [
-        f"/dccstor/ipc1/CAR/DREAM/DREAMdata/{cl}.csv"
+        f"/dccstor/ipc1/CAR/DREAM/DREAMdata/Time_aligned_per_cell_line/CL_incl_test/{cl}.csv"
         for cl in sampled_params["test_cell_lines"]
     ]
     config["learning_rate"] = sampled_params["learning_rate"]
@@ -110,7 +110,7 @@ if __name__ == "__main__":
         "test_cell_lines": [["AU565", "EFM19", "HCC2218", "LY2", "MACLS2", "MDAMB436"]],
         "learning_rate": [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1],
         "n_epochs": [10, 50, 100],
-        "batch_size": [10000, 50000, 100000],
+        "batch_size": [1000, 5000, 10000, 50000],
     }
 
     base_config = {
@@ -121,6 +121,8 @@ if __name__ == "__main__":
         "time_point": 9,
         "non_marker_cols": ["treatment", "cell_line", "time", "cellID", "fileID"],
         "treatment_col_name": "treatment",
+        "sample_n_cells": 500,
+        "filter_starved_stim": True,
         "minmaxscale": True,
         "add_root_values": True,
         "root_nodes": ["EGFR"],

@@ -39,6 +39,8 @@ def prepare_cell_line_data(
     time_point: int = 9,
     non_marker_cols: List[str] = ["treatment", "cell_line", "time", "cellID", "fileID"],
     treatment_col_name: str = "treatment",
+    sample_n_cells: Union[int, bool] = False,
+    filter_starved_stim: bool = True,
     **extras,
 ):
     if isinstance(data_file, str):
@@ -57,6 +59,25 @@ def prepare_cell_line_data(
     inhibitor_map = inhibitor_mapping()
 
     cl_data = cl_data[cl_data["time"] == time_point]
+
+    if filter_starved_stim:
+        cl_data = cl_data[cl_data["treatment"] != "full"]
+        cl_data = cl_data[cl_data["time"] != 0]
+
+    if sample_n_cells:
+        replacement = (
+            False
+            if all(
+                cl_data.groupby(["cell_line", "treatment", "time"]).size()
+                > sample_n_cells
+            )
+            else True
+        )
+        cl_data = (
+            cl_data.groupby(["cell_line", "treatment", "time"])
+            .sample(n=sample_n_cells, replace=replacement)
+            .reset_index(["cell_line", "treatment", "time"])
+        )
 
     cl_data.loc[:, "inhibitor"] = [
         inhibitor_map[treatment] for treatment in cl_data[treatment_col_name]
@@ -210,6 +231,7 @@ def cl_data_to_input(
     root_nodes: List[str] = ["EGF", "SERUM"],
     do_split: bool = True,
     replace_zero_inputs: Union[bool, float] = False,
+    balance_data: bool = False,
     **extras,
 ):
     markers = [c for c in data.columns if c in model.nodes()]
@@ -223,6 +245,13 @@ def cl_data_to_input(
         do_replace = False
 
     data = data.dropna(subset=markers, axis=0)
+
+    if balance_data:
+        data = (
+            data.groupby(["cell_line", "treatment", "time"])
+            .sample(n=500)
+            .reset_index(drop=False)
+        )
 
     train, valid = split_data(
         data,
