@@ -34,11 +34,13 @@ def get_environ_var(env_var_name, fail_gracefully=True):
 def train_network(
     pkn_sif: str,
     network_class: str,
-    data_file: str,
+    data_file: List,
     output_dir: str,
     time_point: int = 9,
     non_marker_cols: List[str] = ["treatment", "cell_line", "time", "cellID", "fileID"],
     treatment_col_name: str = "treatment",
+    sample_n_cells: Union[int, bool] = False,
+    filter_starved_stim: bool = True,
     minmaxscale: bool = True,
     add_root_values: bool = True,
     input_value: float = 1,
@@ -63,6 +65,8 @@ def train_network(
         time_point=time_point,
         non_marker_cols=non_marker_cols,
         treatment_col_name=treatment_col_name,
+        filter_starved_stim=filter_starved_stim,
+        sample_n_cells=sample_n_cells,
     )
 
     # Load train and valid data
@@ -89,6 +93,7 @@ def train_network(
         input_value=input_value,
         root_nodes=root_nodes,
         replace_zero_inputs=replace_zero_inputs,
+        balance_data=True,
     )
 
     # Load test data
@@ -98,6 +103,8 @@ def train_network(
         time_point=time_point,
         non_marker_cols=non_marker_cols,
         treatment_col_name=treatment_col_name,
+        sample_n_cells=False,
+        filter_starved_stim=filter_starved_stim,
     )
 
     (test_data, test_inhibitors, test_input, test, scaler) = cl_data_to_input(
@@ -114,6 +121,7 @@ def train_network(
         root_nodes=root_nodes,
         do_split=False,
         replace_zero_inputs=replace_zero_inputs,
+        balance_data=False,
     )
 
     # Optimize model
@@ -215,7 +223,20 @@ def main(config_path):
 
         job_id = get_environ_var("LSB_JOBID", fail_gracefully=True)
         mlflow.log_param("ccc_job_id", job_id)
-        mlflow.log_params({x: config[x] for x in config if x not in ["data_file"]})
+        log_params = {
+            x: [y.split("/")[-1] for y in config[x]]
+            if x
+            in [
+                "valid_cell_lines",
+                "test_cell_lines",
+                "train_cell_lines",
+            ]
+            and not config[x] is None
+            else config[x]
+            for x in config
+        }
+        log_params = {x: y for x, y in log_params.items() if len(str(y)) < 500}
+        mlflow.log_params(log_params)
         train_network(**config)
 
 

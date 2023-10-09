@@ -289,12 +289,13 @@ class DREAMMixIn:
         epochs: int,
         batch_size: int,
         learning_rate: float,
-        optim_wrapper=torch.optim.Adam,
+        optim_wrapper=torch.optim.SGD,
         logger=None,
         convergence_check: bool = False,
         save_checkpoint: bool = True,
         checkpoint_path: str = None,
         tensors_to_cuda: bool = False,
+        patience: int = 5,
     ):
         """
         The main function of this class.
@@ -377,6 +378,7 @@ class DREAMMixIn:
         # Train the model
         losses = pd.DataFrame(columns=["time", "loss", "phase"])
         curr_best_val_loss = 1e6
+        early_stopping_count = 0
 
         for e in tqdm(range(epochs)):
             # Instantiate the model
@@ -412,7 +414,8 @@ class DREAMMixIn:
                 torch.nn.utils.clip_grad_norm_(parameters, max_norm=1)
                 # Update the parameters
                 optim.step()
-                # We save metrics with their time to be able to compare training vs validation even though they are not logged with the same frequency
+                # We save metrics with their time to be able to compare training vs validation
+                # even though they are not logged with the same frequency
                 if logger is not None:
                     logger.log_metric("train_loss", loss.detach().item())
                 losses = pd.concat(
@@ -429,6 +432,8 @@ class DREAMMixIn:
                     ],
                     ignore_index=True,
                 )
+
+            # Validation
             with torch.no_grad():
                 # Instantiate the model
                 self.initialise_random_truth_and_output(
@@ -448,25 +453,6 @@ class DREAMMixIn:
                     predictions=predictions, ground_truth=valid_ground_truth
                 )
 
-                if curr_best_val_loss > valid_loss:
-                    curr_best_val_loss = valid_loss
-                    if checkpoint_path is not None:
-                        module_of_edges = torch.nn.ModuleDict(
-                            {
-                                f"{edge[0]}@@@{edge[1]}": self.edges()[edge]["layer"]
-                                for edge in self.transfer_edges
-                            }
-                        )
-                        torch.save(
-                            {
-                                "epoch": e,
-                                "model_state_dict": module_of_edges.state_dict(),
-                                "optimizer_state_dict": optim.state_dict(),
-                                "loss": valid_loss,
-                            },
-                            f"{checkpoint_path}model.pt",
-                        )
-
                 # No need to detach since there are no gradients
                 if logger is not None:
                     logger.log_metric("valid_loss", valid_loss.item())
@@ -485,6 +471,48 @@ class DREAMMixIn:
                     ],
                     ignore_index=True,
                 )
+
+                if curr_best_val_loss > valid_loss:
+                    early_stopping_count = 0
+                    curr_best_val_loss = valid_loss
+                    if checkpoint_path is not None:
+                        module_of_edges = torch.nn.ModuleDict(
+                            {
+                                f"{edge[0]}@@@{edge[1]}": self.edges()[edge]["layer"]
+                                for edge in self.transfer_edges
+                            }
+                        )
+
+                        best_model_state = module_of_edges.state_dict()
+                        best_optimizer_state = optim.state_dict()
+                else:
+                    early_stopping_count += 1
+
+                    if early_stopping_count > patience:
+                        print("Early stopping")
+                        torch.save(
+                            {
+                                "epoch": e,
+                                "model_state_dict": best_model_state,
+                                "optimizer_state_dict": best_optimizer_state,
+                                "loss": valid_loss,
+                            },
+                            f"{checkpoint_path}model.pt",
+                        )
+                        if convergence_check:
+                            return losses, curr_best_val_loss, loop_states
+                        else:
+                            return losses, curr_best_val_loss, None
+            torch.save(
+                {
+                    "epoch": e,
+                    "model_state_dict": best_model_state,
+                    "optimizer_state_dict": best_optimizer_state,
+                    "loss": valid_loss,
+                },
+                f"{checkpoint_path}model.pt",
+            )
+
         if convergence_check:
             return losses, curr_best_val_loss, loop_states
         else:
