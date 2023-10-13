@@ -11,6 +11,7 @@ def create_and_save_configs(sampled_params, base_config, i):
     for key, value in sampled_params.items():
         config[key] = value
 
+    config["data_file"] = sampled_params["cell_lines"]
     config["output_dir"] = f"{base_config['output_dir']}{i}/"
     config["checkpoint_path"] = f"{base_config['checkpoint_path']}{i}/"
     config["param_setting"] = i
@@ -22,19 +23,12 @@ def create_and_save_configs(sampled_params, base_config, i):
 
     config[
         "data_file"
-    ] = f"/dccstor/ipc1/CAR/DREAM/DREAMdata/Time_aligned_per_cell_line/CL_incl_test/{ sampled_params['cell_lines']}.csv"
-
-    config["test_treatments"] = sampled_params["test_treatments"]
-    config["train_treatments"] = sampled_params["train_treatments"]
-    if sampled_params["test_treatments"] == "imTOR":
-        config["valid_treatments"] = "iPKC"
-    elif sampled_params["test_treatments"] == "iPKC":
-        config["valid_treatments"] = "imTOR"
+    ] = f"/dccstor/ipc1/CAR/DREAM/DREAMdata/Time_aligned_per_cell_line/CL_incl_test/{sampled_params['cell_lines']}.csv"
 
     config["learning_rate"] = sampled_params["learning_rate"]
     config["n_epochs"] = sampled_params["n_epochs"]
     config["batch_size"] = sampled_params["batch_size"]
-    config["inhibition_value"] = sampled_params["inhibition_value"]
+    config["scale_type"] = sampled_params["normalisation"]
 
     with open(f"{config['output_dir']}{i}_config.json", "w") as fp:
         json.dump(config, fp)
@@ -47,46 +41,40 @@ def main(base_config, param_grid):
     param_list = list(ParameterGrid(param_grid))
 
     for i, params in enumerate(param_list):
-        create_and_save_configs(params, base_config, f"{i}")
+        create_and_save_configs(sampled_params=params, base_config=base_config, i=i)
 
 
 if __name__ == "__main__":
     param_grid = {
-        "cell_lines": ["BT549", "HCC1954", "OCUBM"],
+        "cell_lines": ["BT20"],
+        # "treatments": ["EGF", "iEGFR", "iMEK", "iPI3K", "iPKC", "imTOR"],
         # "train_treatments": [],
-        "test_treatments": ["imTOR", "iPKC"],
-        "train_treatments": [["iEGFR", "iPI3K", "iMEK"]],
+        # "valid_treatments": ["iEGFR", "iMEK", "iPI3K", "iPKC"],
         # "valid_cell_lines": [],
-        # "test_cell_lines": [["HCC1806", "Hs578T", "HCC1428"]],
-        "learning_rate": [0.0001, 0.001, 0.01, 0.1],
-        "n_epochs": [10, 50, 100],
-        "batch_size": [128, 1000, 10000],
-        "inhibition_value": [1, 5, 10],
+        # "test_cell_lines": [["AU565", "EFM19", "HCC2218", "LY2", "MACLS2", "MDAMB436"]],
+        "learning_rate": [0.0005, 0.001, 0.005],
+        "n_epochs": [5, 10, 20],
+        "batch_size": [64, 128, 256],
+        "normalisation": ["minmax", "quantile", "clipping"],
     }
 
     base_config = {
-        "pkn_sif": "/dccstor/ipc1/CAR/DREAM/DREAMdata/PKN_Alice_AMPK_SMAD23_roots.sif",
+        "pkn_sif": "/dccstor/ipc1/CAR/DREAM/DREAMdata/PKN_subnetwork.sif",
         "network_class": "DREAMBioFuzzNet",
         "data_file": "",
-        "output_dir": "/dccstor/ipc1/CAR/DREAM/Model/Test/New_treatment/",
+        "output_dir": "/dccstor/ipc1/CAR/DREAM/Model/Test/OneCellLine/",
         "time_point": 9,
-        "non_marker_cols": ["treatment", "cell_line", "time", "cellID", "fileID"],
+        "non_marker_cols": ["treatment", "cell_line", "time"],
         "treatment_col_name": "treatment",
-        "sample_n_cells": 500,
-        "filter_starved_stim": True,
-        "minmaxscale": True,
+        "sample_n_cells": False,
+        "filter_starved_stim": False,
         "add_root_values": True,
-        "root_nodes": [
-            "EGFR",
-            "SERUM",
-        ],  # AMPK and SMAD23 added internally but not with value 1
+        "root_nodes": ["EGFR"],
         "input_value": 1,
         "train_treatments": None,
         "valid_treatments": None,
-        "test_treatments": None,
         "train_cell_lines": None,
         "valid_cell_lines": None,
-        "test_cell_lines": None,
         "convergence_check": False,
         "replace_zero_inputs": 1e-9,
         "inhibition_value": 1.0,
@@ -94,8 +82,8 @@ if __name__ == "__main__":
         "n_epochs": 20,
         "batch_size": 300,
         "tensors_to_cuda": True,
-        "checkpoint_path": "/dccstor/ipc1/CAR/DREAM/Model/Test/New_treatment/",
-        "experiment_name": "BFN_NT",
+        "checkpoint_path": "/dccstor/ipc1/CAR/DREAM/Model/Test/OneCellLine/",
+        "experiment_name": "OneCellLine",
         "optimizer": "SGD",
     }
 

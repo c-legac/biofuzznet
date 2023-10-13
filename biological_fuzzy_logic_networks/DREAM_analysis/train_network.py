@@ -34,7 +34,7 @@ def get_environ_var(env_var_name, fail_gracefully=True):
 def train_network(
     pkn_sif: str,
     network_class: str,
-    data_file: List,
+    data_file: Union[List, str],
     output_dir: str,
     time_point: int = 9,
     non_marker_cols: List[str] = ["treatment", "cell_line", "time", "cellID", "fileID"],
