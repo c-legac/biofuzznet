@@ -1,4 +1,3 @@
-import numpy as np
 from biological_fuzzy_logic_networks.biomixnet import BioMixNet
 from biological_fuzzy_logic_networks.biofuzznet import BioFuzzNet
 from biological_fuzzy_logic_networks.utils import read_sif
@@ -6,11 +5,27 @@ from biological_fuzzy_logic_networks.DREAM.DREAMBioFuzzNet import (
     DREAMBioFuzzNet,
     DREAMBioMixNet,
 )
-from sklearn.preprocessing import MinMaxScaler
+from biological_fuzzy_logic_networks.DREAM_analysis.scalers import ClippingScaler
+from sklearn.preprocessing import MinMaxScaler, QuantileTransformer
 from sklearn.model_selection import train_test_split
 from torch import DoubleTensor
 import pandas as pd
 from typing import List, Union
+
+
+def get_scaler(scale_type):
+    if scale_type.lower() == "minmax":
+        scaler = MinMaxScaler()
+    elif scale_type == "quantile":
+        scaler = QuantileTransformer()
+    elif scale_type == "clippping":
+        scaler = ClippingScaler()
+    else:
+        raise Exception(
+            f"Scaler {scale_type} not found use one of minmax, clipping or quantile"
+        )
+
+    return scaler
 
 
 def create_bfz(pkn_sif: str, network_class: str):
@@ -37,12 +52,14 @@ def create_bfz(pkn_sif: str, network_class: str):
 def prepare_cell_line_data(
     data_file: Union[List, str],
     time_point: int = 9,
+    sel_condition: str = None,
     non_marker_cols: List[str] = ["treatment", "cell_line", "time", "cellID", "fileID"],
     treatment_col_name: str = "treatment",
     sample_n_cells: Union[int, bool] = False,
     filter_starved_stim: bool = True,
     **extras,
 ):
+    print(type(data_file))
     if isinstance(data_file, str):
         cl_data = pd.read_csv(data_file)
     elif isinstance(data_file, List):
@@ -52,13 +69,15 @@ def prepare_cell_line_data(
             data.append(d)
         cl_data = pd.concat(data)
     else:
-        Exception("`data_file` should be a string or list of strings")
+        raise Exception("`data_file` should be a string or list of strings")
 
     print(cl_data["cell_line"].unique())
     data_to_nodes_map = data_to_nodes_mapping()
     inhibitor_map = inhibitor_mapping()
 
     cl_data = cl_data[cl_data["time"] == time_point]
+    if sel_condition:
+        cl_data = cl_data[cl_data[treatment_col_name] == sel_condition]
 
     if filter_starved_stim:
         cl_data = cl_data[cl_data["treatment"] != "full"]
@@ -73,10 +92,8 @@ def prepare_cell_line_data(
             )
             else True
         )
-        cl_data = (
-            cl_data.groupby(["cell_line", "treatment", "time"])
-            .sample(n=sample_n_cells, replace=replacement)
-            .reset_index(["cell_line", "treatment", "time"])
+        cl_data = cl_data.groupby(["cell_line", "treatment", "time"]).sample(
+            n=sample_n_cells, replace=replacement
         )
 
     cl_data.loc[:, "inhibitor"] = [
@@ -225,13 +242,13 @@ def cl_data_to_input(
     train_cell_lines: List[str] = None,
     valid_cell_lines: List[str] = None,
     inhibition_value: Union[int, float] = 1.0,
-    minmaxscale: bool = True,
+    scale_type: str = "minmax",
+    scaler=None,
     add_root_values: bool = True,
     input_value: float = 1,
     root_nodes: List[str] = ["EGF", "SERUM"],
     do_split: bool = True,
     replace_zero_inputs: Union[bool, float] = False,
-    balance_data: bool = False,
     **extras,
 ):
     markers = [c for c in data.columns if c in model.nodes()]
@@ -246,13 +263,6 @@ def cl_data_to_input(
 
     data = data.dropna(subset=markers, axis=0)
 
-    if balance_data:
-        data = (
-            data.groupby(["cell_line", "treatment", "time"])
-            .sample(n=500)
-            .reset_index(drop=False)
-        )
-
     train, valid = split_data(
         data,
         train_treatments,
@@ -261,20 +271,12 @@ def cl_data_to_input(
         valid_cell_lines,
         do_split=do_split,
     )
-    if isinstance(minmaxscale, bool):
-        if minmaxscale:
-            scaler = MinMaxScaler()
-            scaler.fit(train[markers])
-            train[markers] = scaler.transform(train[markers])
-            if valid is not None:
-                valid[markers] = scaler.transform(valid[markers])
-                t = valid[markers]
-                t[t < 0] = 0
-                valid[markers] = t
-        else:
-            scaler = None
-    elif minmaxscale is not None:
-        scaler = minmaxscale
+
+    if not scaler and not scale_type:
+        raise Warning("No scaler type or scaler provided, using unscaled data")
+    if scaler:
+        if scaler and scale_type:
+            raise Warning("Scaler provided, ignoring `scale type`")
         train[markers] = scaler.transform(train[markers])
         t = train[markers]
         t[t < 0] = 0
@@ -284,8 +286,16 @@ def cl_data_to_input(
             t = valid[markers]
             t[t < 0] = 0
             valid[markers] = t
-    else:
-        scaler = None
+    elif not scaler and scale_type:
+        scaler = get_scaler(scale_type)
+        scaler.fit(train[markers])
+        train[markers] = scaler.transform(train[markers])
+        if valid is not None:
+            valid[markers] = scaler.transform(valid[markers])
+            t = valid[markers]
+            t[t < 0] = 0
+            valid[markers] = t
+
     if add_root_values:
         train.loc[:, root_nodes] = input_value
         if valid is not None:
@@ -342,12 +352,13 @@ def cl_data_to_input(
 
 def inhibitor_mapping(reverse: bool = False):
     inhibitor_mapping = {
-        "EGF": np.nan,
-        "full": np.nan,
+        "EGF": "None",
+        "full": "None",
         "iEGFR": "EGFR",
         "iMEK": "MEK12",
         "iPI3K": "PI3K",
         "iPKC": "PKC",
+        "imTOR": "mTOR",
     }
 
     if reverse:
