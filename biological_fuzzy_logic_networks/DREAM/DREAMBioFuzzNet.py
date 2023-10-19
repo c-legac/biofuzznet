@@ -499,6 +499,12 @@ class DREAMMixIn:
                             },
                             f"{checkpoint_path}model.pt",
                         )
+
+                        pred_df = pd.DataFrame({k: v.numpy() for k, v in predictions})
+                        pred_df.to_csv(
+                            f"{checkpoint_path}predictions_with_model_save_early_stopping.csv"
+                        )
+
                         if convergence_check:
                             return losses, curr_best_val_loss, loop_states
                         else:
@@ -512,6 +518,9 @@ class DREAMMixIn:
                 },
                 f"{checkpoint_path}model.pt",
             )
+
+            pred_df = pd.DataFrame({k: v.numpy() for k, v in predictions})
+            pred_df.to_csv(f"{checkpoint_path}predictions_with_model_save.csv")
 
         if convergence_check:
             return losses, curr_best_val_loss, loop_states
