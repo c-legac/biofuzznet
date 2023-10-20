@@ -485,11 +485,27 @@ class DREAMMixIn:
 
                         best_model_state = module_of_edges.state_dict()
                         best_optimizer_state = optim.state_dict()
+
+                        # torch.save(
+                        #     {
+                        #         "epoch": e,
+                        #         "model_state_dict": best_model_state,
+                        #         "optimizer_state_dict": best_optimizer_state,
+                        #         "loss": valid_loss,
+                        #     },
+                        #     f"{checkpoint_path}model.pt",
+                        # )
+
+                        # pred_df = pd.DataFrame(
+                        #     {k: v.numpy() for k, v in predictions.items()}
+                        # )
+                        # pred_df.to_csv(f"{checkpoint_path}predictions_with_model.csv")
                 else:
                     early_stopping_count += 1
 
                     if early_stopping_count > patience:
                         print("Early stopping")
+
                         torch.save(
                             {
                                 "epoch": e,
@@ -500,9 +516,11 @@ class DREAMMixIn:
                             f"{checkpoint_path}model.pt",
                         )
 
-                        pred_df = pd.DataFrame({k: v.numpy() for k, v in predictions})
+                        pred_df = pd.DataFrame(
+                            {k: v.numpy() for k, v in predictions.items()}
+                        )
                         pred_df.to_csv(
-                            f"{checkpoint_path}predictions_with_model_save_early_stopping.csv"
+                            f"{checkpoint_path}predictions_with_model_early_stopping.csv"
                         )
 
                         if convergence_check:
@@ -519,7 +537,7 @@ class DREAMMixIn:
                 f"{checkpoint_path}model.pt",
             )
 
-            pred_df = pd.DataFrame({k: v.numpy() for k, v in predictions})
+            pred_df = pd.DataFrame({k: v.numpy() for k, v in predictions.items()})
             pred_df.to_csv(f"{checkpoint_path}predictions_with_model_save.csv")
 
         if convergence_check:
