@@ -1,6 +1,6 @@
 from biological_fuzzy_logic_networks.biofuzznet import BioFuzzNet
 from biological_fuzzy_logic_networks.biomixnet import BioMixNet
-from biological_fuzzy_logic_networks.utils import MSE_loss
+from biological_fuzzy_logic_networks.utils import MSE_loss, read_sif
 from biological_fuzzy_logic_networks.DREAM.DREAMdataset import DREAMBioFuzzDataset
 from biological_fuzzy_logic_networks.utils import has_cycle
 import networkx as nx
@@ -15,6 +15,7 @@ import copy
 
 class DREAMMixIn:
     # Setter Methods
+
     def initialise_random_truth_and_output(self, batch_size, to_cuda: bool = False):
         """
         Initialises the network so that the output_state and ground_truth are set to random tensors.
@@ -45,18 +46,31 @@ class DREAMMixIn:
 
         node_type = self.nodes()[node]["node_type"]
         if node_type == "biological":
-            self.nodes()[node]["output_state"] = self.update_biological_node(node)
+            self.nodes()[node]["output_state"] = self.update_biological_node(node=node, inhibition=inhibition)
         else:
             self.nodes()[node]["output_state"] = self.integrate_logical_node(
-                node, to_cuda=to_cuda
+                node=node, inhibition=inhibition, to_cuda=to_cuda
             )
 
-        # Inhibit nodes by dividing by a certain factor, if not inhibited inhibition is 1
-        self.nodes()[node]["output_state"] = (
-            self.nodes()[node]["output_state"] / inhibition[node]
-        )
 
-    def integrate_logical_node(self, node: str, to_cuda: bool = False) -> torch.Tensor:
+    def update_biological_node(self, node: str, inhibition) -> torch.Tensor:
+        """
+        Returns the updated output state of a node when propagating  through the graph.
+        Args:
+            - node: name of the biological node to update
+        Return:
+            - a torch.Tensor representing the updated value of the node
+        """
+        parent_node = [p for p in self.predecessors(node)]
+        if len(parent_node) > 1:
+            raise AssertionError("This biological node has more than one incoming edge")
+        elif len(parent_node) == 1:
+            # The state of a root node stays the same
+            return self.propagate_along_edge(edge=(parent_node[0], node), inhibition=inhibition)
+        else:  # For a root edge
+            return self.nodes()[node]["ground_truth"]
+
+    def integrate_logical_node(self, node: str, inhibition, to_cuda: bool = False) -> torch.Tensor:
         """
         A wrapper around integrate_NOT, integrate_OR and integrate_AND to integrate the values
         at any logical node independently of the gate.
@@ -68,15 +82,15 @@ class DREAMMixIn:
 
         """
         if self.nodes[node]["node_type"] == "logic_gate_AND":
-            return self.integrate_AND(node)
+            return self.integrate_AND(node=node, inhibition=inhibition)
         if self.nodes[node]["node_type"] == "logic_gate_OR":
-            return self.integrate_OR(node)
+            return self.integrate_OR(node=node, inhibition=inhibition)
         if self.nodes[node]["node_type"] == "logic_gate_NOT":
-            return self.integrate_NOT(node, to_cuda)
+            return self.integrate_NOT(node=node, inhibition=inhibition, to_cuda=to_cuda)
         else:
             raise NameError("This node is not a known logic gate.")
 
-    def integrate_NOT(self, node: str, to_cuda: bool = False) -> torch.Tensor:
+    def integrate_NOT(self, node: str, inhibition, to_cuda: bool = False) -> torch.Tensor:
         """
         Computes the NOT operation at a NOT gate
 
@@ -91,13 +105,92 @@ class DREAMMixIn:
         if len(upstream_edges) == 0:
             raise AssertionError("This NOT gate has no predecessor")
         else:
-            state_to_integrate = self.propagate_along_edge(upstream_edges[0])
+            state_to_integrate = self.propagate_along_edge(edge=upstream_edges[0], inhibition=inhibition)
             ones = torch.ones(state_to_integrate.size())
 
             if to_cuda:
                 ones = ones.to("cuda:0")
             # We work with tensors
             return ones - state_to_integrate
+
+
+    def integrate_AND(self, inhibition, node: str) -> torch.Tensor:
+        """
+        Integrate the state values from all incoming nodes at an AND gate.
+        Cannot support more than two input gates.
+
+        Args:
+            node: the name of the node representing the AND gate
+        Returns:
+            The output state at the AND gate after integration
+        """
+        upstream_edges = [(pred, node) for pred in self.predecessors(node)]
+        if len(upstream_edges) > 2:
+            raise AssertionError(
+                f"The AND gate {node} has more than two incoming edges."
+            )
+        states_to_integrate = [
+            self.propagate_along_edge(edge=edge, inhibition=inhibition) for edge in upstream_edges
+        ]
+        # Multiply all the tensors
+        return states_to_integrate[0] * states_to_integrate[1]
+
+    def integrate_OR(self, inhibition, node: str) -> torch.Tensor:
+        """
+        Integrate the state values from all incoming nodes at an OR gate.
+        Cannot support more than two input gates.
+
+        Args:
+            node: the name of the node representing the OR gate
+        Returns:
+            The state at the OR gate after integration
+        """
+        upstream_edges = [(pred, node) for pred in self.predecessors(node)]
+        if len(upstream_edges) > 2:
+            raise AssertionError(
+                f"The OR gate {node} has more than two incoming edges."
+            )
+        states_to_integrate = [
+            self.propagate_along_edge(edge=edge, inhibition=inhibition) for edge in upstream_edges
+        ]
+
+        # Multiply all the tensors
+        return (
+            states_to_integrate[0]
+            + states_to_integrate[1]
+            - states_to_integrate[0] * states_to_integrate[1]
+        )
+
+
+    def propagate_along_edge(self, edge: tuple, inhibition) -> torch.Tensor:
+        """
+        Transmits node state along an edge.
+        If an edge is simple: then it returns the state at the upstream node. No computation occurs in this case.
+        If an edge sports a transfer function: then it computes the transfer function and returns the transformed state.
+
+        Args:
+            edge: The edge along which to propagate the state
+        Returns:
+            The new state at the target node of the edge
+        """
+        if edge not in self.edges():
+            raise NameError(f"The input edge {edge} does not exist.")
+            assert False
+        elif self.edges()[edge]["edge_type"] == "simple":
+            state_to_propagate = self.nodes[edge[0]]["output_state"]
+            return state_to_propagate
+        elif self.edges()[edge]["edge_type"] == "transfer_function":
+            # The preceding state has to go through the Hill layer
+            state_to_propagate = self.edges()[edge]["layer"].forward(
+                self.nodes[edge[0]]["output_state"]
+            )
+        else:
+            NameError("The node type is incorrect")
+            assert False
+
+        if self.nodes[edge[0]]["node_type"] == "biological":
+            state_to_propagate = state_to_propagate / inhibition[edge[0]]
+        return state_to_propagate
 
     def sequential_update(
         self, input_nodes, inhibition, convergence_check=False, to_cuda: bool = False
@@ -564,7 +657,37 @@ class DREAMBioFuzzNet(DREAMMixIn, BioFuzzNet):
     def __init__(self, nodes=None, edges=None):
         super(DREAMBioFuzzNet, self).__init__(nodes, edges)
 
+    @classmethod
+    def build_DREAMBioFuzzNet_from_file(cls, filepath: str):
+        """
+        An alternate constructor to build the BioFuzzNet from the sif file instead of the lists of nodes and edges.
+        AND gates should already be specified in the sif file, and should be named node1_and_node2 where node1 and node2 are the incoming nodes
+
+
+        Args:
+            - filepath: SIF file in tsv format [node1 edge_weight node2] if the network topology is contained in a file.
+                If the file ha the format [node1 node2 edge_weight], then it can be converted in the desired format using  utils.change_SIF_convention
+
+        """
+        nodes, edges = read_sif(filepath)
+        return DREAMBioFuzzNet(nodes, edges)
+
 
 class DREAMBioMixNet(DREAMMixIn, BioMixNet):
     def __init__(self, nodes=None, edges=None):
         super(DREAMBioMixNet, self).__init__(nodes, edges)
+
+    @classmethod
+    def build_DREAMBioMixNet_from_file(cls, filepath: str):
+        """
+        An alternate constructor to build the BioFuzzNet from the sif file instead of the lists of nodes and edges.
+        AND gates should already be specified in the sif file, and should be named node1_and_node2 where node1 and node2 are the incoming nodes
+
+
+        Args:
+            - filepath: SIF file in tsv format [node1 edge_weight node2] if the network topology is contained in a file.
+                If the file ha the format [node1 node2 edge_weight], then it can be converted in the desired format using  utils.change_SIF_convention
+
+        """
+        nodes, edges = read_sif(filepath)
+        return DREAMBioMixNet(nodes, edges)
