@@ -138,7 +138,7 @@ class BioMixNet(BioFuzzNet):
         elif self.nodes[node]["node_type"] == "logic_gate_NOT":
             return self.integrate_NOT(node)
         elif self.nodes[node]["node_type"] == "logic_gate_MIXED":
-            return self.nodes[node]["gate"].forward(node)
+            return self.nodes[node]["gate"](node)
         else:
             raise NameError("This node is not a known logic gate.")
 
@@ -190,7 +190,7 @@ class BioMixNet(BioFuzzNet):
         torch.autograd.set_detect_anomaly(True)
         torch.set_default_tensor_type(torch.DoubleTensor)
         # Input nodes
-        if self.root_nodes == []:
+        if len(self.root_nodes) == 0:
             input_nodes = [k for k in test_input.keys()]
         else:
             input_nodes = self.root_nodes

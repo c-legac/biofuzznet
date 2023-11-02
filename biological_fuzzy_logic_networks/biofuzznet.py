@@ -8,24 +8,24 @@ ALL RIGHTS RESERVED
 # modules defined in biofuzznet/
 # Pylance throws a reportMissingImports but thos actually works.
 
+import copy
+import warnings
+from datetime import datetime
+from typing import Optional
+
+import pandas as pd
+import torch
+# external python modules
+from networkx.classes.digraph import DiGraph
+from tqdm import tqdm
+
+from biological_fuzzy_logic_networks.Hill_function import HillTransferFunction
+from biological_fuzzy_logic_networks.biofuzzdataset import BioFuzzDataset
 from biological_fuzzy_logic_networks.utils import (
     has_cycle,
     read_sif,
     MSE_loss,
 )  # , weighted_loss
-from biological_fuzzy_logic_networks.Hill_function import HillTransferFunction
-from biological_fuzzy_logic_networks.biofuzzdataset import BioFuzzDataset
-
-
-# external python modules
-from networkx.classes.digraph import DiGraph
-import torch
-import pandas as pd
-from tqdm import tqdm
-from datetime import datetime
-import copy
-from typing import Optional
-import warnings
 
 
 class BioFuzzNet(DiGraph):
@@ -54,12 +54,12 @@ class BioFuzzNet(DiGraph):
             for node in nodes:
                 # Then we have to check manually is some of the nodes are AND gates
                 if (
-                    "_and_" in node
+                        "_and_" in node
                 ):  # Different convention than CellNOpt for more readability
                     # This node is an AND gate
                     self.add_fuzzy_node(node, "AND")
                 elif (
-                    "_or_" in node
+                        "_or_" in node
                 ):  # Different convention than CellNOpt for more readability
                     # This node is an OR gate
                     self.add_fuzzy_node(node, "OR")
@@ -170,9 +170,9 @@ class BioFuzzNet(DiGraph):
         self.add_edge(upstream_node, downstream_node, edge_type="simple", weight=1)
 
     def add_transfer_edge(
-        self,
-        upstream_node: str,
-        downstream_node: str,
+            self,
+            upstream_node: str,
+            downstream_node: str,
     ) -> None:
         """
         Add transfer directed edge (with a Hill transfer function) to the network
@@ -354,7 +354,7 @@ class BioFuzzNet(DiGraph):
             if node_name in ground_truth.keys():
                 node = self.nodes()[node_name]
                 if (
-                    len(parents) > 0
+                        len(parents) > 0
                 ):  # If the node has a parent (ie is not an input node for which we for sure have the ground truth as prediction)
                     node["ground_truth"] = ground_truth[node_name]
                 else:
@@ -387,7 +387,7 @@ class BioFuzzNet(DiGraph):
             return state_to_propagate
         if self.edges()[edge]["edge_type"] == "transfer_function":
             # The preceding state has to go through the Hill layer
-            state_to_propagate = self.edges()[edge]["layer"].forward(
+            state_to_propagate = self.edges()[edge]["layer"](
                 self.nodes[edge[0]]["output_state"]
             )
             return state_to_propagate
@@ -457,9 +457,9 @@ class BioFuzzNet(DiGraph):
 
         # Multiply all the tensors
         return (
-            states_to_integrate[0]
-            + states_to_integrate[1]
-            - states_to_integrate[0] * states_to_integrate[1]
+                states_to_integrate[0]
+                + states_to_integrate[1]
+                - states_to_integrate[0] * states_to_integrate[1]
         )
 
     def integrate_logical_node(self, node: str) -> torch.Tensor:
@@ -512,7 +512,7 @@ class BioFuzzNet(DiGraph):
             self.nodes()[node]["output_state"] = self.integrate_logical_node(node)
 
     def update_one_timestep_cyclic_network(
-        self, input_nodes, loop_status, convergence_check=False
+            self, input_nodes, loop_status, convergence_check=False
     ) -> Optional[dict]:
         """
         Does the sequential update of a directed cyclic graph over one timestep: ie updates each node in the network only once.
@@ -531,7 +531,7 @@ class BioFuzzNet(DiGraph):
 
         current_nodes = copy.deepcopy(input_nodes)
         non_updated_nodes = [n for n in self.nodes()]
-        while non_updated_nodes != []:
+        while len(non_updated_nodes) > 0:
             # curr_nodes is a queue, hence FIFO (first in first out)
             # when popping the first item, we obtain the one that has been in the queue the longest
             curr_node = current_nodes.pop(0)
@@ -542,7 +542,7 @@ class BioFuzzNet(DiGraph):
                     p for p in self.predecessors(curr_node) if p in non_updated_nodes
                 ]
                 # Check if parents are updated
-                if non_updated_parents != []:
+                if len(non_updated_parents) > 0:
                     for p in non_updated_parents:
                         # Check if there is a loop to which both the parent and the current node belong
                         for cycle in loop_status[1]:
@@ -551,7 +551,7 @@ class BioFuzzNet(DiGraph):
                                 non_updated_parents.remove(p)
                                 break
                     # Now non_updated_parents only contains parents that are not part of a loop to which curr_node belongs
-                    if non_updated_parents != []:
+                    if len(non_updated_parents) > 0:
                         can_update = False
                         for p in non_updated_parents:
                             current_nodes.append(p)
@@ -610,7 +610,7 @@ class BioFuzzNet(DiGraph):
             non_updated_nodes = [n for n in self.nodes()]
             safeguard = 0
             node_number = len([n for n in self.nodes()])
-            while non_updated_nodes != []:
+            while len(non_updated_nodes) > 0:
                 safeguard += 1
                 if safeguard > 10 * node_number:
                     print(
@@ -625,7 +625,7 @@ class BioFuzzNet(DiGraph):
                     parents = [pred for pred in self.predecessors(curr_node)]
                     non_updated_parents = [p for p in parents if p in non_updated_nodes]
                     # If one parent is not updated yet, then we cannot update
-                    if non_updated_parents != []:
+                    if len(non_updated_parents) > 0:
                         for p in non_updated_parents:
                             # curr_nodes is FIFO: we first append the parents then the child
                             current_nodes.append(p)
@@ -678,15 +678,15 @@ class BioFuzzNet(DiGraph):
     # Optimisation methods
 
     def conduct_optimisation(
-        self,
-        input: dict,
-        ground_truth: dict,
-        test_input: dict,
-        test_ground_truth: dict,
-        epochs: int,
-        batch_size: int,
-        learning_rate: float,
-        optim_wrapper=torch.optim.Adam,
+            self,
+            input: dict,
+            ground_truth: dict,
+            test_input: dict,
+            test_ground_truth: dict,
+            epochs: int,
+            batch_size: int,
+            learning_rate: float,
+            optim_wrapper=torch.optim.Adam,
     ):
         """
         The main function of this class.

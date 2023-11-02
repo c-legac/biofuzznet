@@ -190,7 +190,7 @@ class DREAMMixIn:
             return state_to_propagate
         elif self.edges()[edge]["edge_type"] == "transfer_function":
             # The preceding state has to go through the Hill layer
-            state_to_propagate = self.edges()[edge]["layer"].forward(
+            state_to_propagate = self.edges()[edge]["layer"](
                 self.nodes[edge[0]]["output_state"]
             )
         else:
@@ -231,7 +231,7 @@ class DREAMMixIn:
             non_updated_nodes = [n for n in self.nodes()]
             safeguard = 0
             node_number = len([n for n in self.nodes()])
-            while non_updated_nodes != []:
+            while len(non_updated_nodes) > 0:
                 safeguard += 1
                 if safeguard > 10 * node_number:
                     print(
@@ -246,7 +246,7 @@ class DREAMMixIn:
                     parents = [pred for pred in self.predecessors(curr_node)]
                     non_updated_parents = [p for p in parents if p in non_updated_nodes]
                     # If one parent is not updated yet, then we cannot update
-                    if non_updated_parents != []:
+                    if len(non_updated_parents) > 0:
                         for p in non_updated_parents:
                             # curr_nodes is FIFO: we first append the parents then the child
                             current_nodes.append(p)
@@ -329,7 +329,7 @@ class DREAMMixIn:
 
         current_nodes = copy.deepcopy(input_nodes)
         non_updated_nodes = [n for n in self.nodes()]
-        while non_updated_nodes != []:
+        while len(non_updated_nodes) > 0:
             # curr_nodes is a queue, hence FIFO (first in first out)
             # when popping the first item, we obtain the one that has been in the queue the longest
             curr_node = current_nodes.pop(0)
@@ -340,7 +340,7 @@ class DREAMMixIn:
                     p for p in self.predecessors(curr_node) if p in non_updated_nodes
                 ]
                 # Check if parents are updated
-                if non_updated_parents != []:
+                if len(non_updated_parents) > 0:
                     for p in non_updated_parents:
                         # Check if there is a loop to which both the parent and the current node belong
                         for cycle in loop_status[1]:
@@ -349,7 +349,7 @@ class DREAMMixIn:
                                 non_updated_parents.remove(p)
                                 break
                     # Now non_updated_parents only contains parents that are not part of a loop to which curr_node belongs
-                    if non_updated_parents != []:
+                    if len(non_updated_parents) > 0:
                         can_update = False
                         for p in non_updated_parents:
                             current_nodes.append(p)
@@ -433,7 +433,7 @@ class DREAMMixIn:
         torch.autograd.set_detect_anomaly(True)
         torch.set_default_tensor_type(torch.DoubleTensor)
         # Input nodes
-        if self.root_nodes == []:
+        if len(self.root_nodes) == 0:
             input_nodes = [k for k in valid_input.keys()]
             print(f"There were no root nodes, {input_nodes} were used as input")
         else:
