@@ -46,12 +46,13 @@ class DREAMMixIn:
 
         node_type = self.nodes()[node]["node_type"]
         if node_type == "biological":
-            self.nodes()[node]["output_state"] = self.update_biological_node(node=node, inhibition=inhibition)
+            self.nodes()[node]["output_state"] = self.update_biological_node(
+                node=node, inhibition=inhibition
+            )
         else:
             self.nodes()[node]["output_state"] = self.integrate_logical_node(
                 node=node, inhibition=inhibition, to_cuda=to_cuda
             )
-
 
     def update_biological_node(self, node: str, inhibition) -> torch.Tensor:
         """
@@ -66,11 +67,15 @@ class DREAMMixIn:
             raise AssertionError("This biological node has more than one incoming edge")
         elif len(parent_node) == 1:
             # The state of a root node stays the same
-            return self.propagate_along_edge(edge=(parent_node[0], node), inhibition=inhibition)
+            return self.propagate_along_edge(
+                edge=(parent_node[0], node), inhibition=inhibition
+            )
         else:  # For a root edge
             return self.nodes()[node]["ground_truth"]
 
-    def integrate_logical_node(self, node: str, inhibition, to_cuda: bool = False) -> torch.Tensor:
+    def integrate_logical_node(
+        self, node: str, inhibition, to_cuda: bool = False
+    ) -> torch.Tensor:
         """
         A wrapper around integrate_NOT, integrate_OR and integrate_AND to integrate the values
         at any logical node independently of the gate.
@@ -90,7 +95,9 @@ class DREAMMixIn:
         else:
             raise NameError("This node is not a known logic gate.")
 
-    def integrate_NOT(self, node: str, inhibition, to_cuda: bool = False) -> torch.Tensor:
+    def integrate_NOT(
+        self, node: str, inhibition, to_cuda: bool = False
+    ) -> torch.Tensor:
         """
         Computes the NOT operation at a NOT gate
 
@@ -105,14 +112,15 @@ class DREAMMixIn:
         if len(upstream_edges) == 0:
             raise AssertionError("This NOT gate has no predecessor")
         else:
-            state_to_integrate = self.propagate_along_edge(edge=upstream_edges[0], inhibition=inhibition)
+            state_to_integrate = self.propagate_along_edge(
+                edge=upstream_edges[0], inhibition=inhibition
+            )
             ones = torch.ones(state_to_integrate.size())
 
             if to_cuda:
                 ones = ones.to("cuda:0")
             # We work with tensors
             return ones - state_to_integrate
-
 
     def integrate_AND(self, inhibition, node: str) -> torch.Tensor:
         """
@@ -130,7 +138,8 @@ class DREAMMixIn:
                 f"The AND gate {node} has more than two incoming edges."
             )
         states_to_integrate = [
-            self.propagate_along_edge(edge=edge, inhibition=inhibition) for edge in upstream_edges
+            self.propagate_along_edge(edge=edge, inhibition=inhibition)
+            for edge in upstream_edges
         ]
         # Multiply all the tensors
         return states_to_integrate[0] * states_to_integrate[1]
@@ -151,7 +160,8 @@ class DREAMMixIn:
                 f"The OR gate {node} has more than two incoming edges."
             )
         states_to_integrate = [
-            self.propagate_along_edge(edge=edge, inhibition=inhibition) for edge in upstream_edges
+            self.propagate_along_edge(edge=edge, inhibition=inhibition)
+            for edge in upstream_edges
         ]
 
         # Multiply all the tensors
@@ -160,7 +170,6 @@ class DREAMMixIn:
             + states_to_integrate[1]
             - states_to_integrate[0] * states_to_integrate[1]
         )
-
 
     def propagate_along_edge(self, edge: tuple, inhibition) -> torch.Tensor:
         """
