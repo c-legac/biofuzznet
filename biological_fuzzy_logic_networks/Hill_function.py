@@ -16,14 +16,13 @@ class HillTransferFunction(torch.nn.Module):
     """Apply a Hill transformation on 1D input"""
 
     def __init__(self):
-
         """
         Initialise the parameters if the transfer functino
         """
         torch.nn.Module.__init__(self)
 
-        self.n = torch.nn.Parameter(torch.normal(mean=0, std=0.75, size=(1,)))
-        self.K = torch.nn.Parameter(torch.normal(mean=-0.5, std=0.75, size=(1,)))
+        self.n = torch.tensor(0)
+        self.K = torch.log(torch.tensor(0.0001))
 
     def forward(self, x):
         """
