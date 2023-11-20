@@ -190,7 +190,7 @@ class DREAMMixIn:
             return state_to_propagate
         elif self.edges()[edge]["edge_type"] == "transfer_function":
             # The preceding state has to go through the Hill layer
-            state_to_propagate = self.edges()[edge]["layer"].forward(
+            state_to_propagate = self.edges()[edge]["layer"](
                 self.nodes[edge[0]]["output_state"]
             )
         else:
@@ -231,7 +231,7 @@ class DREAMMixIn:
             non_updated_nodes = [n for n in self.nodes()]
             safeguard = 0
             node_number = len([n for n in self.nodes()])
-            while non_updated_nodes != []:
+            while len(non_updated_nodes) > 0:
                 safeguard += 1
                 if safeguard > 10 * node_number:
                     print(
@@ -246,7 +246,7 @@ class DREAMMixIn:
                     parents = [pred for pred in self.predecessors(curr_node)]
                     non_updated_parents = [p for p in parents if p in non_updated_nodes]
                     # If one parent is not updated yet, then we cannot update
-                    if non_updated_parents != []:
+                    if len(non_updated_parents) > 0:
                         for p in non_updated_parents:
                             # curr_nodes is FIFO: we first append the parents then the child
                             current_nodes.append(p)
@@ -329,7 +329,7 @@ class DREAMMixIn:
 
         current_nodes = copy.deepcopy(input_nodes)
         non_updated_nodes = [n for n in self.nodes()]
-        while non_updated_nodes != []:
+        while len(non_updated_nodes) > 0:
             # curr_nodes is a queue, hence FIFO (first in first out)
             # when popping the first item, we obtain the one that has been in the queue the longest
             curr_node = current_nodes.pop(0)
@@ -340,7 +340,7 @@ class DREAMMixIn:
                     p for p in self.predecessors(curr_node) if p in non_updated_nodes
                 ]
                 # Check if parents are updated
-                if non_updated_parents != []:
+                if len(non_updated_parents) > 0:
                     for p in non_updated_parents:
                         # Check if there is a loop to which both the parent and the current node belong
                         for cycle in loop_status[1]:
@@ -349,7 +349,7 @@ class DREAMMixIn:
                                 non_updated_parents.remove(p)
                                 break
                     # Now non_updated_parents only contains parents that are not part of a loop to which curr_node belongs
-                    if non_updated_parents != []:
+                    if len(non_updated_parents) > 0:
                         can_update = False
                         for p in non_updated_parents:
                             current_nodes.append(p)
@@ -391,7 +391,7 @@ class DREAMMixIn:
         epochs: int,
         batch_size: int,
         learning_rate: float,
-        optim_wrapper=torch.optim.SGD,
+        optim_wrapper=torch.optim.Adam,
         logger=None,
         convergence_check: bool = False,
         save_checkpoint: bool = True,
@@ -433,7 +433,7 @@ class DREAMMixIn:
         torch.autograd.set_detect_anomaly(True)
         torch.set_default_tensor_type(torch.DoubleTensor)
         # Input nodes
-        if self.root_nodes == []:
+        if len(self.root_nodes) == 0:
             input_nodes = [k for k in valid_input.keys()]
             print(f"There were no root nodes, {input_nodes} were used as input")
         else:
@@ -486,7 +486,7 @@ class DREAMMixIn:
             # Instantiate the model
             self.initialise_random_truth_and_output(batch_size, to_cuda=tensors_to_cuda)
 
-            for X_batch, y_batch, inhibited_batch in dataloader:
+            for X_batch, y_batch, inhibited_batch in tqdm(dataloader, desc='batch',total=len(dataset)//batch_size):
                 # In this case we do not use X_batch explicitly, as we just need the ground truth state of each node.
                 # Reinitialise the network at the right size
                 batch_keys = list(X_batch.keys())
@@ -504,9 +504,11 @@ class DREAMMixIn:
                 )
 
                 # Get the predictions
-                predictions = self.output_states
+                predictions = {k:v for k,v in self.output_states.items() if k not in input_nodes}
+                #predictions = self.output_states
+                labels = {k:v for k,v in y_batch.items() if k in predictions}
 
-                loss = MSE_loss(predictions=predictions, ground_truth=y_batch)
+                loss = MSE_loss(predictions=predictions, ground_truth=labels)
 
                 # First reset then compute the gradients
                 optim.zero_grad()
@@ -519,7 +521,7 @@ class DREAMMixIn:
                 # We save metrics with their time to be able to compare training vs validation
                 # even though they are not logged with the same frequency
                 if logger is not None:
-                    logger.log_metric("train_loss", loss.detach().item())
+                    logger.log_metric(f"train_loss", loss.detach().item())
                 losses = pd.concat(
                     [
                         losses,
@@ -550,14 +552,16 @@ class DREAMMixIn:
                     input_nodes, valid_inhibitors, to_cuda=tensors_to_cuda
                 )
                 # Get the predictions
-                predictions = self.output_states
+                predictions = {k:v for k,v in self.output_states.items() if k not in input_nodes}
+                labels = {k:v for k,v in valid_ground_truth.items() if k in predictions}
+                #predictions = self.output_states
                 valid_loss = MSE_loss(
                     predictions=predictions, ground_truth=valid_ground_truth
                 )
 
                 # No need to detach since there are no gradients
                 if logger is not None:
-                    logger.log_metric("valid_loss", valid_loss.item())
+                    logger.log_metric(f"valid_loss", valid_loss.item())
 
                 losses = pd.concat(
                     [
