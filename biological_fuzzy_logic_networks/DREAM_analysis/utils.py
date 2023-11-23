@@ -41,7 +41,7 @@ def create_bfz(pkn_sif: str, network_class: str, shuffle_nodes: bool = False):
     }
 
     try:
-        selected_cls = class_dispatch[network_class]
+        selected_cls = class_dispatch[network_class.lower()]
     except KeyError as e:
         raise Exception(
             "network_class arguement not recognised, should be one of",
