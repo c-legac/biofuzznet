@@ -57,6 +57,7 @@ def train_network(
     batch_size: int = 300,
     checkpoint_path: str = None,
     convergence_check: bool = False,
+    tensors_to_cuda: bool = True,
     **extras,
 ):
     model = create_bfz(pkn_sif, network_class)
@@ -138,6 +139,7 @@ def train_network(
         checkpoint_path=checkpoint_path,
         convergence_check=convergence_check,
         logger=mlflow,
+        tensors_to_cuda=tensors_to_cuda,
     )
 
     if convergence_check:
