@@ -486,7 +486,9 @@ class DREAMMixIn:
             # Instantiate the model
             self.initialise_random_truth_and_output(batch_size, to_cuda=tensors_to_cuda)
 
-            for X_batch, y_batch, inhibited_batch in tqdm(dataloader, desc='batch',total=len(dataset)//batch_size):
+            for X_batch, y_batch, inhibited_batch in tqdm(
+                dataloader, desc="batch", total=len(dataset) // batch_size
+            ):
                 # In this case we do not use X_batch explicitly, as we just need the ground truth state of each node.
                 # Reinitialise the network at the right size
                 batch_keys = list(X_batch.keys())
@@ -504,9 +506,11 @@ class DREAMMixIn:
                 )
 
                 # Get the predictions
-                predictions = {k:v for k,v in self.output_states.items() if k not in input_nodes}
-                #predictions = self.output_states
-                labels = {k:v for k,v in y_batch.items() if k in predictions}
+                predictions = {
+                    k: v for k, v in self.output_states.items() if k not in input_nodes
+                }
+                # predictions = self.output_states
+                labels = {k: v for k, v in y_batch.items() if k in predictions}
 
                 loss = MSE_loss(predictions=predictions, ground_truth=labels)
 
@@ -521,7 +525,7 @@ class DREAMMixIn:
                 # We save metrics with their time to be able to compare training vs validation
                 # even though they are not logged with the same frequency
                 if logger is not None:
-                    logger.log_metric(f"train_loss", loss.detach().item())
+                    logger.log_metric("train_loss", loss.detach().item())
                 losses = pd.concat(
                     [
                         losses,
@@ -552,16 +556,18 @@ class DREAMMixIn:
                     input_nodes, valid_inhibitors, to_cuda=tensors_to_cuda
                 )
                 # Get the predictions
-                predictions = {k:v for k,v in self.output_states.items() if k not in input_nodes}
-                labels = {k:v for k,v in valid_ground_truth.items() if k in predictions}
-                #predictions = self.output_states
-                valid_loss = MSE_loss(
-                    predictions=predictions, ground_truth=valid_ground_truth
-                )
+                predictions = {
+                    k: v for k, v in self.output_states.items() if k not in input_nodes
+                }
+                labels = {
+                    k: v for k, v in valid_ground_truth.items() if k in predictions
+                }
+                # predictions = self.output_states
+                valid_loss = MSE_loss(predictions=predictions, ground_truth=labels)
 
                 # No need to detach since there are no gradients
                 if logger is not None:
-                    logger.log_metric(f"valid_loss", valid_loss.item())
+                    logger.log_metric("valid_loss", valid_loss.item())
 
                 losses = pd.concat(
                     [
@@ -612,39 +618,41 @@ class DREAMMixIn:
                     if early_stopping_count > patience:
                         print("Early stopping")
 
-                        torch.save(
-                            {
-                                "epoch": e,
-                                "model_state_dict": best_model_state,
-                                "optimizer_state_dict": best_optimizer_state,
-                                "loss": valid_loss,
-                            },
-                            f"{checkpoint_path}model.pt",
-                        )
+                        if checkpoint_path is not None:
+                            torch.save(
+                                {
+                                    "epoch": e,
+                                    "model_state_dict": best_model_state,
+                                    "optimizer_state_dict": best_optimizer_state,
+                                    "loss": valid_loss,
+                                },
+                                f"{checkpoint_path}model.pt",
+                            )
 
-                        pred_df = pd.DataFrame(
-                            {k: v.numpy() for k, v in predictions.items()}
-                        )
-                        pred_df.to_csv(
-                            f"{checkpoint_path}predictions_with_model_early_stopping.csv"
-                        )
+                            pred_df = pd.DataFrame(
+                                {k: v.numpy() for k, v in predictions.items()}
+                            )
+                            pred_df.to_csv(
+                                f"{checkpoint_path}predictions_with_model_early_stopping.csv"
+                            )
 
                         if convergence_check:
                             return losses, curr_best_val_loss, loop_states
                         else:
                             return losses, curr_best_val_loss, None
-            torch.save(
-                {
-                    "epoch": e,
-                    "model_state_dict": best_model_state,
-                    "optimizer_state_dict": best_optimizer_state,
-                    "loss": valid_loss,
-                },
-                f"{checkpoint_path}model.pt",
-            )
+            if checkpoint_path is not None:
+                torch.save(
+                    {
+                        "epoch": e,
+                        "model_state_dict": best_model_state,
+                        "optimizer_state_dict": best_optimizer_state,
+                        "loss": valid_loss,
+                    },
+                    f"{checkpoint_path}model.pt",
+                )
 
-            pred_df = pd.DataFrame({k: v.numpy() for k, v in predictions.items()})
-            pred_df.to_csv(f"{checkpoint_path}predictions_with_model_save.csv")
+                pred_df = pd.DataFrame({k: v.numpy() for k, v in predictions.items()})
+                pred_df.to_csv(f"{checkpoint_path}predictions_with_model_save.csv")
 
         if convergence_check:
             return losses, curr_best_val_loss, loop_states
