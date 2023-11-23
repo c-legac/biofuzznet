@@ -1,6 +1,9 @@
 import random
+from typing import Type
 
 import torch
+
+from biological_fuzzy_logic_networks.biofuzznet import BioFuzzNet
 
 
 class LabelShuffleMixin:
@@ -42,3 +45,12 @@ class LabelShuffleMixin:
             learning_rate=learning_rate,
             optim_wrapper=optim_wrapper
         )
+
+
+def create_shuffled_subclass(base_cls: Type[BioFuzzNet]):
+    """Dynamically create a shuffled version of a BioFuzzNet sub-class
+    If the base class is named BlaBlaSubBioNet, the new class is called ShuffledBlaBlaSubBioNet
+    """
+    shuffled_subclass = type(f"Shuffled{base_cls.__name__}", (LabelShuffleMixin, base_cls), {})
+    return shuffled_subclass
+
