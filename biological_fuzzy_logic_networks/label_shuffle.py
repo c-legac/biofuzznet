@@ -5,7 +5,7 @@ from typing import Type
 from biological_fuzzy_logic_networks.biofuzznet import BioFuzzNet
 
 
-class LabelShuffleMixin(BioFuzzNet):
+class LabelShuffleMixin:
     """A BFN mixin that remaps biological nodes in the network (only those with a ground truth)."""
 
     def __init__(self, *args, **kwargs):
