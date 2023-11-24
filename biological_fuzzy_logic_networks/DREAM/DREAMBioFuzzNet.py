@@ -6,7 +6,7 @@ from typing import Optional
 import networkx as nx
 import pandas as pd
 import torch as torch
-from tqdm import tqdm
+from tqdm.autonotebook import tqdm
 
 from biological_fuzzy_logic_networks.DREAM.DREAMdataset import DREAMBioFuzzDataset
 from biological_fuzzy_logic_networks.biofuzznet import BioFuzzNet
@@ -484,7 +484,9 @@ class DREAMMixIn:
         curr_best_val_loss = 1e6
         early_stopping_count = 0
 
-        for e in tqdm(range(epochs)):
+        epoch_pbar = tqdm(range(epochs), desc="Loss=?.??e??")
+        train_loss_running_mean = None
+        for e in epoch_pbar:
             # Instantiate the model
             self.initialise_random_truth_and_output(batch_size, to_cuda=tensors_to_cuda)
 
@@ -538,7 +540,11 @@ class DREAMMixIn:
                     ],
                     ignore_index=True,
                 )
-
+                if train_loss_running_mean is not None: 
+                    train_loss_running_mean = 0.1*loss.detach().item() + 0.9*train_loss_running_mean
+                else:
+                    train_loss_running_mean = loss.detach().item()
+                epoch_pbar.set_description(f"Loss:{train_loss_running_mean:.2e}")
             # Validation
             with torch.no_grad():
                 # Instantiate the model
@@ -558,7 +564,7 @@ class DREAMMixIn:
                 labels = {k: v for k, v in valid_ground_truth.items() if k in predictions}
                 # predictions = self.output_states
                 valid_loss = MSE_loss(
-                    predictions=predictions, ground_truth=valid_ground_truth
+                    predictions=predictions, ground_truth=labels
                 )
 
                 # No need to detach since there are no gradients
@@ -613,40 +619,42 @@ class DREAMMixIn:
 
                     if early_stopping_count > patience:
                         print("Early stopping")
+                        if checkpoint_path is not None:
 
-                        torch.save(
-                            {
-                                "epoch": e,
-                                "model_state_dict": best_model_state,
-                                "optimizer_state_dict": best_optimizer_state,
-                                "loss": valid_loss,
-                            },
-                            f"{checkpoint_path}model.pt",
-                        )
-
-                        pred_df = pd.DataFrame(
-                            {k: v.numpy() for k, v in predictions.items()}
-                        )
-                        pred_df.to_csv(
-                            f"{checkpoint_path}predictions_with_model_early_stopping.csv"
-                        )
+                            torch.save(
+                                {
+                                    "epoch": e,
+                                    "model_state_dict": best_model_state,
+                                    "optimizer_state_dict": best_optimizer_state,
+                                    "loss": valid_loss,
+                                },
+                                f"{checkpoint_path}model.pt",
+                            )
+    
+                            pred_df = pd.DataFrame(
+                                {k: v.numpy() for k, v in predictions.items()}
+                            )
+                            pred_df.to_csv(
+                                f"{checkpoint_path}predictions_with_model_early_stopping.csv"
+                            )
 
                         if convergence_check:
                             return losses, curr_best_val_loss, loop_states
                         else:
                             return losses, curr_best_val_loss, None
-            torch.save(
-                {
-                    "epoch": e,
-                    "model_state_dict": best_model_state,
-                    "optimizer_state_dict": best_optimizer_state,
-                    "loss": valid_loss,
-                },
-                f"{checkpoint_path}model.pt",
-            )
-
-            pred_df = pd.DataFrame({k: v.numpy() for k, v in predictions.items()})
-            pred_df.to_csv(f"{checkpoint_path}predictions_with_model_save.csv")
+            if checkpoint_path is not None:
+                torch.save(
+                    {
+                        "epoch": e,
+                        "model_state_dict": best_model_state,
+                        "optimizer_state_dict": best_optimizer_state,
+                        "loss": valid_loss,
+                    },
+                    f"{checkpoint_path}model.pt",
+                )
+    
+                pred_df = pd.DataFrame({k: v.numpy() for k, v in predictions.items()})
+                pred_df.to_csv(f"{checkpoint_path}predictions_with_model_save.csv")
 
         if convergence_check:
             return losses, curr_best_val_loss, loop_states
