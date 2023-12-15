@@ -4,7 +4,7 @@ from biological_fuzzy_logic_networks.DREAM_analysis.utils import (
     cl_data_to_input,
 )
 import pandas as pd
-from typing import List, Union
+from typing import List, Union, Sequence
 from app_tunnel.apps import mlflow_tunnel
 from sklearn.metrics import r2_score
 import mlflow
@@ -36,7 +36,7 @@ def train_network(
     data_file: Union[List, str],
     output_dir: str,
     time_point: int = 9,
-    non_marker_cols: List[str] = ["treatment", "cell_line", "time", "cellID", "fileID"],
+    non_marker_cols: Sequence[str] = ("treatment", "cell_line", "time", "cellID", "fileID"),
     treatment_col_name: str = "treatment",
     sample_n_cells: Union[int, bool] = False,
     filter_starved_stim: bool = True,
@@ -44,7 +44,7 @@ def train_network(
     scaler_type: str = "minmax",
     add_root_values: bool = True,
     input_value: float = 1,
-    root_nodes: List[str] = ["EGF", "SERUM"],
+    root_nodes: Sequence[str] = ("EGF", "SERUM"),
     replace_zero_inputs: Union[bool, float] = False,
     train_treatments: List[str] = None,
     valid_treatments: List[str] = None,
@@ -57,9 +57,10 @@ def train_network(
     batch_size: int = 300,
     checkpoint_path: str = None,
     convergence_check: bool = False,
+    shuffle_nodes: bool = False,
     **extras,
 ):
-    model = create_bfz(pkn_sif, network_class)
+    model = create_bfz(pkn_sif, network_class, shuffle_nodes=shuffle_nodes)
     cl_data = prepare_cell_line_data(
         data_file=data_file,
         time_point=time_point,

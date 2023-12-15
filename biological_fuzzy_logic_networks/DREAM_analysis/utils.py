@@ -1,16 +1,19 @@
-from biological_fuzzy_logic_networks.biomixnet import BioMixNet
-from biological_fuzzy_logic_networks.biofuzznet import BioFuzzNet
-from biological_fuzzy_logic_networks.utils import read_sif
+from typing import List, Union, Type, Dict
+
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MinMaxScaler, QuantileTransformer
+from torch import DoubleTensor
+
 from biological_fuzzy_logic_networks.DREAM.DREAMBioFuzzNet import (
     DREAMBioFuzzNet,
     DREAMBioMixNet,
 )
 from biological_fuzzy_logic_networks.DREAM_analysis.scalers import ClippingScaler
-from sklearn.preprocessing import MinMaxScaler, QuantileTransformer
-from sklearn.model_selection import train_test_split
-from torch import DoubleTensor
-import pandas as pd
-from typing import List, Union
+from biological_fuzzy_logic_networks.biofuzznet import BioFuzzNet
+from biological_fuzzy_logic_networks.biomixnet import BioMixNet
+from biological_fuzzy_logic_networks.label_shuffle import create_shuffled_subclass
+from biological_fuzzy_logic_networks.utils import read_sif
 
 
 def get_scaler(scale_type):
@@ -28,36 +31,39 @@ def get_scaler(scale_type):
     return scaler
 
 
-def create_bfz(pkn_sif: str, network_class: str):
+def create_bfz(pkn_sif: str, network_class: str, shuffle_nodes: bool = False):
     nodes, edges = read_sif(pkn_sif)
-    if network_class.lower() == "dreambiofuzznet":
-        model = DREAMBioFuzzNet(nodes, edges)
+    class_dispatch: Dict[str, Type[BioFuzzNet]] = {
+        "dreambiofuzznet": DREAMBioFuzzNet,
+        "dreambiomixnet": DREAMBioMixNet,
+        "biomixnet": BioMixNet,
+        "biofuzznet": BioFuzzNet
+    }
 
-    elif network_class.lower() == "dreambiomixnet":
-        model = DREAMBioMixNet(nodes, edges)
-
-    elif network_class.lower() == "biomixnet":
-        model = BioMixNet(nodes, edges)
-    elif network_class.lower() == "biofuzznet":
-        model = BioFuzzNet(nodes, edges)
-    else:
+    try:
+        selected_cls = class_dispatch[network_class.lower()]
+    except KeyError as e:
         raise Exception(
             "network_class arguement not recognised, should be one of",
             "DREAMBioFuzzNet, DREAMBioMixNet, BioFuzzNet, BioMixNet",
-        )
+        ) from e
 
+    if shuffle_nodes:
+        selected_cls = create_shuffled_subclass(selected_cls)
+
+    model = selected_cls(nodes=nodes, edges=edges)
     return model
 
 
 def prepare_cell_line_data(
-    data_file: Union[List, str],
-    time_point: int = 9,
-    sel_condition: str = None,
-    non_marker_cols: List[str] = ["treatment", "cell_line", "time", "cellID", "fileID"],
-    treatment_col_name: str = "treatment",
-    sample_n_cells: Union[int, bool] = False,
-    filter_starved_stim: bool = True,
-    **extras,
+        data_file: Union[List, str],
+        time_point: int = 9,
+        sel_condition: str = None,
+        non_marker_cols: List[str] = ["treatment", "cell_line", "time", "cellID", "fileID"],
+        treatment_col_name: str = "treatment",
+        sample_n_cells: Union[int, bool] = False,
+        filter_starved_stim: bool = True,
+        **extras,
 ):
     print(type(data_file))
     if isinstance(data_file, str):
@@ -106,12 +112,12 @@ def prepare_cell_line_data(
 
 
 def split_data(
-    data,
-    train_treatments,
-    valid_treatments,
-    train_cell_lines,
-    valid_cell_lines,
-    do_split: bool = True,
+        data,
+        train_treatments,
+        valid_treatments,
+        train_cell_lines,
+        valid_cell_lines,
+        do_split: bool = True,
 ):
     treatment_split = True
     cell_line_split = True
@@ -139,8 +145,8 @@ def split_data(
                     valid_treatments = [valid_treatments]
 
                 if (
-                    not len(set(train_treatments).intersection(set(valid_treatments)))
-                    == 0
+                        not len(set(train_treatments).intersection(set(valid_treatments)))
+                            == 0
                 ):
                     raise Exception("Given train and validation treatments overlap")
                 else:
@@ -193,8 +199,8 @@ def split_data(
                     valid_cell_lines = [valid_cell_lines]
 
                 if (
-                    not len(set(train_cell_lines).intersection(set(valid_cell_lines)))
-                    == 0
+                        not len(set(train_cell_lines).intersection(set(valid_cell_lines)))
+                            == 0
                 ):
                     raise Exception("Given train and validation cell lines overlap")
 
@@ -221,35 +227,35 @@ def split_data(
                 ]
 
         train = data.loc[
-            (data["cell_line"].isin(train_cell_lines))
-            & data["inhibitor"].isin(train_inhibitors),
-            :,
-        ]
+                (data["cell_line"].isin(train_cell_lines))
+                & data["inhibitor"].isin(train_inhibitors),
+                :,
+                ]
         valid = data.loc[
-            (data["cell_line"].isin(valid_cell_lines))
-            & data["inhibitor"].isin(valid_inhibitors),
-            :,
-        ]
+                (data["cell_line"].isin(valid_cell_lines))
+                & data["inhibitor"].isin(valid_inhibitors),
+                :,
+                ]
 
     return train, valid
 
 
 def cl_data_to_input(
-    data,
-    model,
-    train_treatments: List[str] = None,
-    valid_treatments: List[str] = None,
-    train_cell_lines: List[str] = None,
-    valid_cell_lines: List[str] = None,
-    inhibition_value: Union[int, float] = 1.0,
-    scale_type: str = "minmax",
-    scaler=None,
-    add_root_values: bool = True,
-    input_value: float = 1,
-    root_nodes: List[str] = ["EGF", "SERUM"],
-    do_split: bool = True,
-    replace_zero_inputs: Union[bool, float] = False,
-    **extras,
+        data,
+        model,
+        train_treatments: List[str] = None,
+        valid_treatments: List[str] = None,
+        train_cell_lines: List[str] = None,
+        valid_cell_lines: List[str] = None,
+        inhibition_value: Union[int, float] = 1.0,
+        scale_type: str = "minmax",
+        scaler=None,
+        add_root_values: bool = True,
+        input_value: float = 1,
+        root_nodes: List[str] = ["EGF", "SERUM"],
+        do_split: bool = True,
+        replace_zero_inputs: Union[bool, float] = False,
+        **extras,
 ):
     markers = [c for c in data.columns if c in model.nodes()]
     if isinstance(replace_zero_inputs, float):
