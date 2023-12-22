@@ -98,8 +98,12 @@ cat_features = [
 
 train, test = train_test_split(data)
 
-train.to_csv("/dccstor/ipc1/CAR/DREAM/Model/Baseline/RF_OneCellLine_MEK_FAK_ERK_MF_inputs_without_tr/RF_OneCellLine_train.csv")
-test.to_csv("/dccstor/ipc1/CAR/DREAM/Model/Baseline/RF_OneCellLine_MEK_FAK_ERK_MF_inputs_without_tr/RF_OneCellLine_test.csv")
+train.to_csv(
+    "/dccstor/ipc1/CAR/DREAM/Model/Baseline/RF_OneCellLine_MEK_FAK_ERK_MF_inputs_without_tr/RF_OneCellLine_train.csv"
+)
+test.to_csv(
+    "/dccstor/ipc1/CAR/DREAM/Model/Baseline/RF_OneCellLine_MEK_FAK_ERK_MF_inputs_without_tr/RF_OneCellLine_test.csv"
+)
 
 for marker_to_predict in markers_to_predict:
     print(marker_to_predict)

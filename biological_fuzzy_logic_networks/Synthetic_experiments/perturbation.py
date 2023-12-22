@@ -1,14 +1,20 @@
 from biological_fuzzy_logic_networks.DREAM import DREAMBioFuzzNet
+from biological_fuzzy_logic_networks.DREAM_analysis.train_network import get_environ_var
+from app_tunnel.apps import mlflow_tunnel
+
 import torch
 import numpy as np
 import pandas as pd
+import json
+import click
+import mlflow
 
 
 def run_sim_and_baselines(
     pkn_path,
     train_size,
     test_size,
-    inhibited_edge: tuple = ("mek12", "erk12"),
+    inhibited_node: str = "mek12",
     k_inhibition: float = 5.0,
     divide_inhibition: float = 10.0,
     train_frac=0.7,
@@ -18,6 +24,7 @@ def run_sim_and_baselines(
         "learning_rate": 0.001,
         "tensors_to_cuda": True,
     },
+    **extras,
 ):
     teacher_network = DREAMBioFuzzNet.DREAMBioFuzzNet.build_DREAMBioFuzzNet_from_file(
         pkn_path
@@ -30,15 +37,13 @@ def run_sim_and_baselines(
     )
 
     # INHIBITION INPUTS
-    teacher_network.initialise_random_truth_and_output(train_size)
     no_inhibition = {k: torch.ones(train_size) for k in teacher_network.nodes}
     no_inhibition_test = {k: torch.ones(test_size) for k in teacher_network.nodes}
     perturb_inhibition = no_inhibition_test.copy()
-    perturb_inhibition[inhibited_edge[0]] = torch.Tensor(
-        [divide_inhibition] * test_size
-    )
+    perturb_inhibition[inhibited_node] = torch.Tensor([divide_inhibition] * test_size)
 
     # Generate training data without perturbation
+    teacher_network.initialise_random_truth_and_output(train_size)
     teacher_network.sequential_update(
         teacher_network.root_nodes, inhibition=no_inhibition
     )
@@ -80,14 +85,17 @@ def run_sim_and_baselines(
 
     # Generate test data with perturbation
     # Introduce perturbation
-    original_param = teacher_network.edges[inhibited_edge]["layer"].K
-    teacher_network.edges[inhibited_edge]["layer"].K = torch.nn.Parameter(
-        torch.Tensor([k_inhibition])
-    )
+    original_params = []
+    for e in teacher_network.edges:
+        if e[0] == inhibited_node:
+            original_params.append(teacher_network.edges[e]["layer"].K)
+            teacher_network.edges[e]["layer"].K = torch.nn.Parameter(
+                torch.Tensor([k_inhibition])
+            )
 
     # Generate test data with perturbation
     teacher_network.sequential_update(
-        teacher_network.root_nodes, inhibition=no_inhibition
+        teacher_network.root_nodes, inhibition=no_inhibition_test
     )
     with torch.no_grad():
         perturb_data = {
@@ -114,6 +122,7 @@ def run_sim_and_baselines(
     # Same input as teacher:
     train_input = input_df.iloc[train.index, :]
     val_input = input_df.drop(train.index, axis=0)
+
     train_input_dict = {
         c: torch.Tensor(np.array(train_input[c])) for c in train_input.columns
     }
@@ -141,7 +150,12 @@ def run_sim_and_baselines(
     )
 
     # TEACHER network with division inhibition (K back to original), same inputs
-    teacher_network.edges[("mek12", "erk12")]["layer"].K = original_param
+    counter = 0
+    for e in teacher_network.edges:
+        if e[0] == inhibited_node:
+            teacher_network.edges[e]["layer"].K = original_params[counter]
+            counter += 1
+
     teacher_network.sequential_update(
         teacher_network.root_nodes, inhibition=perturb_inhibition
     )
@@ -286,22 +300,9 @@ def run_sim_and_baselines(
         }
         ut_test_df = pd.DataFrame(gen_test)
 
-    # COMBINE all data
-    test_true_df
-    perturb_true_df
-    teach_div_perturb_with_i  # teacher, perturb, division
-    teach_div_perturb
-    test_output_df  # student, no perturb same inputs
-    test_random_output_df
-    perturb_output_df  # Student perturb same inputs
-    perturb_gen_df
-    ut_perturb_with_input_df  # Untrained  same inputs
-    ut_perturb_df
-    ut_test_with_i_df  # Untrained no perturb, same inputs
-    ut_test_df
-
     pertubed_pred_data = pd.concat(
         [
+            perturb_true_df,
             teach_div_perturb_with_i,
             teach_div_perturb,
             perturb_output_df,
@@ -310,6 +311,7 @@ def run_sim_and_baselines(
             ut_perturb_df,
         ],
         keys=[
+            "teacher_k_inhibition_true",
             "teacher_division_same_input",
             "teacher_division_random_input",
             "student_division_same_input",
@@ -321,12 +323,14 @@ def run_sim_and_baselines(
 
     unpertubed_pred_data = pd.concat(
         [
+            test_true_df,
             test_output_df,
             test_random_output_df,
             ut_test_with_i_df,
             ut_test_df,
         ],
         keys=[
+            "teacher_no_pertrub_true",
             "student_no_perturb_same_input",
             "student_no_perturb_random_input",
             "untrained_no_perturb_same_input",
@@ -334,7 +338,44 @@ def run_sim_and_baselines(
         ],
     )
 
-    return losses, pertubed_pred_data, unpertubed_pred_data, losses
+    return (
+        losses,
+        pertubed_pred_data,
+        unpertubed_pred_data,
+        student_network.get_checkpoint(),
+        teacher_network.get_checkpoint(),
+    )
 
 
-run_sim_and_baselines(pkn_path="/dccstor/ipc1/CAR/BFN/LiverDREAM_PKN.sif")
+@click.command()
+@click.argument("config_path")
+def main(config_path):
+    with open(config_path) as f:
+        config = json.load(f)
+    f.close()
+
+    with mlflow_tunnel(host="mlflow") as tunnel:
+        remote_port = tunnel[5000]
+        mlflow.set_tracking_uri(f"http://localhost:{remote_port}")
+        mlflow.set_experiment(config["experiment_name"])
+
+        job_id = get_environ_var("LSB_JOBID", fail_gracefully=True)
+        mlflow.log_param("ccc_job_id", job_id)
+
+        log_params = {x: y for x, y in config.items() if len(str(y)) < 500}
+        mlflow.log_params(log_params)
+
+    losses, pertubed_data, unpertubed_data, student, teacher = run_sim_and_baselines(
+        **config
+    )
+
+    losses.to_csv(f"{config['out_dir']}_losses.csv")
+    pertubed_data.to_csv(f"{config['out_dir']}_perturbed.csv")
+    unpertubed_data.to_csv(f"{config['out_dir']}_unperturbed.csv")
+
+    torch.save({"model_state_dict": teacher}, f"{config['out_dir']}_teacher.pt")
+    torch.save({"model_state_dict": student}, f"{config['out_dir']}_student.pt")
+
+
+if __name__ == "__main__":
+    main()

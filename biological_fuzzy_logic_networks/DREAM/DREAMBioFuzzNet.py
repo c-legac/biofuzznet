@@ -76,7 +76,7 @@ class DREAMMixIn:
             return self.nodes()[node]["ground_truth"]
 
     def integrate_logical_node(
-            self, node: str, inhibition, to_cuda: bool = False
+        self, node: str, inhibition, to_cuda: bool = False
     ) -> torch.Tensor:
         """
         A wrapper around integrate_NOT, integrate_OR and integrate_AND to integrate the values
@@ -98,7 +98,7 @@ class DREAMMixIn:
             raise NameError("This node is not a known logic gate.")
 
     def integrate_NOT(
-            self, node: str, inhibition, to_cuda: bool = False
+        self, node: str, inhibition, to_cuda: bool = False
     ) -> torch.Tensor:
         """
         Computes the NOT operation at a NOT gate
@@ -168,9 +168,9 @@ class DREAMMixIn:
 
         # Multiply all the tensors
         return (
-                states_to_integrate[0]
-                + states_to_integrate[1]
-                - states_to_integrate[0] * states_to_integrate[1]
+            states_to_integrate[0]
+            + states_to_integrate[1]
+            - states_to_integrate[0] * states_to_integrate[1]
         )
 
     def propagate_along_edge(self, edge: tuple, inhibition) -> torch.Tensor:
@@ -204,7 +204,7 @@ class DREAMMixIn:
         return state_to_propagate
 
     def sequential_update(
-            self, input_nodes, inhibition, convergence_check=False, to_cuda: bool = False
+        self, input_nodes, inhibition, convergence_check=False, to_cuda: bool = False
     ) -> Optional[dict]:
         """
         Update the graph by propagating the signal from root node (or given input node)
@@ -307,12 +307,12 @@ class DREAMMixIn:
             return None
 
     def update_one_timestep_cyclic_network(
-            self,
-            input_nodes,
-            inhibition,
-            loop_status,
-            convergence_check=False,
-            to_cuda: bool = False,
+        self,
+        input_nodes,
+        inhibition,
+        loop_status,
+        convergence_check=False,
+        to_cuda: bool = False,
     ) -> Optional[dict]:
         """
         Does the sequential update of a directed cyclic graph over one timestep: ie updates each node in the network only once.
@@ -383,23 +383,23 @@ class DREAMMixIn:
             return None
 
     def conduct_optimisation(
-            self,
-            input: dict,
-            ground_truth: dict,
-            train_inhibitors: dict,
-            valid_input: dict,
-            valid_ground_truth: dict,
-            valid_inhibitors: dict,
-            epochs: int,
-            batch_size: int,
-            learning_rate: float,
-            optim_wrapper=torch.optim.Adam,
-            logger=None,
-            convergence_check: bool = False,
-            save_checkpoint: bool = True,
-            checkpoint_path: str = None,
-            tensors_to_cuda: bool = False,
-            patience: int = 5,
+        self,
+        input: dict,
+        ground_truth: dict,
+        train_inhibitors: dict,
+        valid_input: dict,
+        valid_ground_truth: dict,
+        valid_inhibitors: dict,
+        epochs: int,
+        batch_size: int,
+        learning_rate: float,
+        optim_wrapper=torch.optim.Adam,
+        logger=None,
+        convergence_check: bool = False,
+        save_checkpoint: bool = True,
+        checkpoint_path: str = None,
+        tensors_to_cuda: bool = False,
+        patience: int = 5,
     ):
         """
         The main function of this class.
@@ -490,9 +490,7 @@ class DREAMMixIn:
             # Instantiate the model
             self.initialise_random_truth_and_output(batch_size, to_cuda=tensors_to_cuda)
 
-            for X_batch, y_batch, inhibited_batch in tqdm(
-                dataloader, desc="batch", total=len(dataset) // batch_size
-            ):
+            for X_batch, y_batch, inhibited_batch in dataloader:
                 # In this case we do not use X_batch explicitly, as we just need the ground truth state of each node.
                 # Reinitialise the network at the right size
                 batch_keys = list(X_batch.keys())
@@ -545,7 +543,9 @@ class DREAMMixIn:
                     ignore_index=True,
                 )
                 if train_loss_running_mean is not None:
-                    train_loss_running_mean = 0.1*loss.detach().item() + 0.9*train_loss_running_mean
+                    train_loss_running_mean = (
+                        0.1 * loss.detach().item() + 0.9 * train_loss_running_mean
+                    )
                 else:
                     train_loss_running_mean = loss.detach().item()
                 epoch_pbar.set_description(f"Loss:{train_loss_running_mean:.2e}")
@@ -680,6 +680,18 @@ class DREAMMixIn:
             for k, v in module_dict.items()
         }
         nx.set_edge_attributes(self, edge_att)
+
+    def get_checkpoint(self):
+        module_of_edges = torch.nn.ModuleDict(
+            {
+                f"{edge[0]}@@@{edge[1]}": self.edges()[edge]["layer"]
+                for edge in self.transfer_edges
+            }
+        )
+
+        model_state_dict = module_of_edges.state_dict()
+
+        return model_state_dict
 
 
 class DREAMBioFuzzNet(DREAMMixIn, BioFuzzNet):
