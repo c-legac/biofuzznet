@@ -37,7 +37,7 @@ def create_bfz(pkn_sif: str, network_class: str, shuffle_nodes: bool = False):
         "dreambiofuzznet": DREAMBioFuzzNet,
         "dreambiomixnet": DREAMBioMixNet,
         "biomixnet": BioMixNet,
-        "biofuzznet": BioFuzzNet
+        "biofuzznet": BioFuzzNet,
     }
 
     try:
@@ -56,14 +56,14 @@ def create_bfz(pkn_sif: str, network_class: str, shuffle_nodes: bool = False):
 
 
 def prepare_cell_line_data(
-        data_file: Union[List, str],
-        time_point: int = 9,
-        sel_condition: str = None,
-        non_marker_cols: List[str] = ["treatment", "cell_line", "time", "cellID", "fileID"],
-        treatment_col_name: str = "treatment",
-        sample_n_cells: Union[int, bool] = False,
-        filter_starved_stim: bool = True,
-        **extras,
+    data_file: Union[List, str],
+    time_point: int = 9,
+    sel_condition: str = None,
+    non_marker_cols: List[str] = ["treatment", "cell_line", "time", "cellID", "fileID"],
+    treatment_col_name: str = "treatment",
+    sample_n_cells: Union[int, bool] = False,
+    filter_starved_stim: bool = True,
+    **extras,
 ):
     print(type(data_file))
     if isinstance(data_file, str):
@@ -112,12 +112,12 @@ def prepare_cell_line_data(
 
 
 def split_data(
-        data,
-        train_treatments,
-        valid_treatments,
-        train_cell_lines,
-        valid_cell_lines,
-        do_split: bool = True,
+    data,
+    train_treatments,
+    valid_treatments,
+    train_cell_lines,
+    valid_cell_lines,
+    do_split: bool = True,
 ):
     treatment_split = True
     cell_line_split = True
@@ -145,8 +145,8 @@ def split_data(
                     valid_treatments = [valid_treatments]
 
                 if (
-                        not len(set(train_treatments).intersection(set(valid_treatments)))
-                            == 0
+                    not len(set(train_treatments).intersection(set(valid_treatments)))
+                    == 0
                 ):
                     raise Exception("Given train and validation treatments overlap")
                 else:
@@ -199,8 +199,8 @@ def split_data(
                     valid_cell_lines = [valid_cell_lines]
 
                 if (
-                        not len(set(train_cell_lines).intersection(set(valid_cell_lines)))
-                            == 0
+                    not len(set(train_cell_lines).intersection(set(valid_cell_lines)))
+                    == 0
                 ):
                     raise Exception("Given train and validation cell lines overlap")
 
@@ -227,35 +227,35 @@ def split_data(
                 ]
 
         train = data.loc[
-                (data["cell_line"].isin(train_cell_lines))
-                & data["inhibitor"].isin(train_inhibitors),
-                :,
-                ]
+            (data["cell_line"].isin(train_cell_lines))
+            & data["inhibitor"].isin(train_inhibitors),
+            :,
+        ]
         valid = data.loc[
-                (data["cell_line"].isin(valid_cell_lines))
-                & data["inhibitor"].isin(valid_inhibitors),
-                :,
-                ]
+            (data["cell_line"].isin(valid_cell_lines))
+            & data["inhibitor"].isin(valid_inhibitors),
+            :,
+        ]
 
     return train, valid
 
 
 def cl_data_to_input(
-        data,
-        model,
-        train_treatments: List[str] = None,
-        valid_treatments: List[str] = None,
-        train_cell_lines: List[str] = None,
-        valid_cell_lines: List[str] = None,
-        inhibition_value: Union[int, float] = 1.0,
-        scale_type: str = "minmax",
-        scaler=None,
-        add_root_values: bool = True,
-        input_value: float = 1,
-        root_nodes: List[str] = ["EGF", "SERUM"],
-        do_split: bool = True,
-        replace_zero_inputs: Union[bool, float] = False,
-        **extras,
+    data,
+    model,
+    train_treatments: List[str] = None,
+    valid_treatments: List[str] = None,
+    train_cell_lines: List[str] = None,
+    valid_cell_lines: List[str] = None,
+    inhibition_value: Union[int, float] = 1.0,
+    scale_type: str = "minmax",
+    scaler=None,
+    add_root_values: bool = True,
+    input_value: float = 1,
+    root_nodes: List[str] = ["EGF", "SERUM"],
+    do_split: bool = True,
+    replace_zero_inputs: Union[bool, float] = False,
+    **extras,
 ):
     markers = [c for c in data.columns if c in model.nodes()]
     if isinstance(replace_zero_inputs, float):
