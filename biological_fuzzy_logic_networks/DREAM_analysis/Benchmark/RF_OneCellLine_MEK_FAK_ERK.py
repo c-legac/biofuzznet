@@ -12,47 +12,6 @@ markers_to_predict = [
 train_cell_lines = ["BT20"]  # train cell lines
 test_cell_lines = []  # test cell lines
 
-# All continous features
-# cont_features = [
-#     "b.CATENIN",
-#     "cleavedCas",
-#     "CyclinB",
-#     "GAPDH",
-#     "IdU",
-#     "Ki.67",
-#     "p.4EBP1",
-#     "p.Akt.Ser473.",
-#     "p.AKT.Thr308.",
-#     "p.AMPK",
-#     "p.BTK",
-#     "p.CREB",
-#     "p.ERK",
-#     "p.FAK",
-#     "p.GSK3b",
-#     "p.H3",
-#     # "p.HER2",
-#     "p.JNK",
-#     "p.MAP2K3",
-#     "p.MAPKAPK2",
-#     "p.MEK",
-#     "p.MKK3.MKK6",
-#     "p.MKK4",
-#     "p.NFkB",
-#     "p.p38",
-#     "p.p53",
-#     "p.p90RSK",
-#     "p.PDPK1",
-#     # "p.PLCg2",
-#     "p.RB",
-#     "p.S6",
-#     "p.S6K",
-#     "p.SMAD23",
-#     "p.SRC",
-#     "p.STAT1",
-#     "p.STAT3",
-#     "p.STAT5",
-#     "time",
-# ]
 
 # Subnetwork inputs
 cont_features = [
@@ -72,29 +31,11 @@ for cl in train_cell_lines + test_cell_lines:
 
 data = pd.concat(data)
 
-data["stimulation"] = 1
-data.loc[data["time"] == 0, "stimulation"] = 0
-data.loc[data["treatment"] == "full", "stimulation"] = 0
-
-data["starvation"] = 1
-data.loc[data["treatment"] == "full", "starvation"] = 0
-
-# cat_data = pd.DataFrame(data["treatment"])
-# encoder = OneHotEncoder()
-# cat_data_encoded = encoder.fit_transform(cat_data)
-# data[np.concatenate(encoder.categories_, axis=0)] = cat_data_encoded.todense()
-# data = data.drop("treatment", axis=1)
-
-# cat_features = list(np.concatenate(encoder.categories_, axis=0)) + [
-#     "starvation",
-#     "stimulation",
-# ]
 
 cat_features = [
     "starvation",
     "stimulation",
 ]
-
 
 train, test = train_test_split(data)
 
@@ -107,8 +48,7 @@ test.to_csv(
 
 for marker_to_predict in markers_to_predict:
     print(marker_to_predict)
-    sel_features = [f for f in cont_features if f is not marker_to_predict]
-    features = sel_features + cat_features
+    features = [f for f in cont_features if f is not marker_to_predict]
     rf = RandomForestRegressor()
     rf.fit(train[features], train[marker_to_predict])
     pred = rf.predict(test[features])
