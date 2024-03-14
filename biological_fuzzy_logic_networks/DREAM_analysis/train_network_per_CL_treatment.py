@@ -120,6 +120,9 @@ def train_network(
         logger=mlflow,
     )
 
+    print("loss: ", loss)
+    print("best loss: ", best_val_loss)
+
     if convergence_check:
         temp = {
             idx: {m: v.detach().numpy() for (m, v) in m.items()}
@@ -150,9 +153,8 @@ def train_network(
         node_r2_scores[f"val_r2_{node}"] = r2_score(
             valid[node], val_output_states[node]
         )
-
-    mlflow.log_metric("best_val_loss", best_val_loss)
-    mlflow.log_metrics(node_r2_scores)
+    # mlflow.log_metric("best_val_loss", best_val_loss)
+    # mlflow.log_metrics(node_r2_scores)
 
     # Save outputs
     with open(f"{output_dir}scaler.pkl", "wb") as f:
@@ -172,28 +174,28 @@ def main(config_path):
         config = json.load(f)
     f.close()
 
-    with mlflow_tunnel(host="mlflow") as tunnel:
-        remote_port = tunnel[5000]
-        mlflow.set_tracking_uri(f"http://localhost:{remote_port}")
-        mlflow.set_experiment(config["experiment_name"])
+    # with mlflow_tunnel(host="mlflow") as tunnel:
+    #     remote_port = tunnel[5000]
+    #     mlflow.set_tracking_uri(f"http://localhost:{remote_port}")
+    #     mlflow.set_experiment(config["experiment_name"])
 
-        job_id = get_environ_var("LSB_JOBID", fail_gracefully=True)
-        mlflow.log_param("ccc_job_id", job_id)
-        log_params = {
-            x: [y.split("/")[-1] for y in config[x]]
-            if x
-            in [
-                "valid_cell_lines",
-                "test_cell_lines",
-                "train_cell_lines",
-            ]
-            and not config[x] is None
-            else config[x]
-            for x in config
-        }
-        log_params = {x: y for x, y in log_params.items() if len(str(y)) < 500}
-        mlflow.log_params(log_params)
-        train_network(**config)
+    #     job_id = get_environ_var("LSB_JOBID", fail_gracefully=True)
+    #     mlflow.log_param("ccc_job_id", job_id)
+    #     log_params = {
+    #         x: [y.split("/")[-1] for y in config[x]]
+    #         if x
+    #         in [
+    #             "valid_cell_lines",
+    #             "test_cell_lines",
+    #             "train_cell_lines",
+    #         ]
+    #         and not config[x] is None
+    #         else config[x]
+    #         for x in config
+    #     }
+    #     log_params = {x: y for x, y in log_params.items() if len(str(y)) < 500}
+    #     mlflow.log_params(log_params)
+    train_network(**config)
 
 
 if __name__ == "__main__":
