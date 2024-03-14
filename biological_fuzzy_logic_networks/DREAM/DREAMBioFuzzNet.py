@@ -18,27 +18,6 @@ from biological_fuzzy_logic_networks.utils import has_cycle
 class DREAMMixIn:
     # Setter Methods
 
-    def initialise_random_truth_and_output(self, batch_size, to_cuda: bool = False):
-        """
-        Initialises the network so that the output_state and ground_truth are set to random tensors.
-        Args:
-            - batch_size: size of the tensor. All tensors will have the same size.
-        NB: This is useful because output_state and ground_truth are set to None when adding nodes using self.add_fuzzy_node()
-            and having None values creates unwanted behavior when using mathematical operations (NaN propagates to non-NaN tensors)
-        """
-        for node_name in self.nodes():
-            node = self.nodes()[node_name]
-            if node["node_type"] == "biological":
-                node["ground_truth"] = torch.rand(batch_size)
-                node["output_state"] = torch.rand(batch_size)
-            else:
-                node["output_state"] = torch.rand(batch_size)
-
-            if to_cuda:
-                node["output_state"] = node["output_state"].to("cuda:0")
-                if node["node_type"] == "biological":
-                    node["ground_truth"] = node["ground_truth"].to("cuda:0")
-
     def update_fuzzy_node(self, node: str, inhibition, to_cuda: bool = False) -> None:
         """
         A wrapper to call the correct updating function depending on the type of the node.
@@ -134,11 +113,13 @@ class DREAMMixIn:
         Returns:
             The output state at the AND gate after integration
         """
+
         upstream_edges = [(pred, node) for pred in self.predecessors(node)]
         if len(upstream_edges) > 2:
             raise AssertionError(
                 f"The AND gate {node} has more than two incoming edges."
             )
+
         states_to_integrate = [
             self.propagate_along_edge(edge=edge, inhibition=inhibition)
             for edge in upstream_edges
@@ -226,6 +207,10 @@ class DREAMMixIn:
             warnings.warn(
                 "convergence_check has been set to True. All simulation states will be saved and returned. This has not been optimised for memory usage and is implemented in a naive manner. Proceed with caution."
             )
+
+        if to_cuda:
+            inhibition = {k: v.to("cuda:0") for k, v in inhibition.items()}
+
         states = {}
         loop_status = has_cycle(self)
         if not loop_status[0]:
@@ -399,7 +384,7 @@ class DREAMMixIn:
         save_checkpoint: bool = True,
         checkpoint_path: str = None,
         tensors_to_cuda: bool = False,
-        patience: int = 5,
+        patience: int = 20,
     ):
         """
         The main function of this class.
@@ -633,6 +618,7 @@ class DREAMMixIn:
                                     "model_state_dict": best_model_state,
                                     "optimizer_state_dict": best_optimizer_state,
                                     "loss": valid_loss,
+                                    "best_val_loss": curr_best_val_loss,
                                 },
                                 f"{checkpoint_path}model.pt",
                             )
@@ -641,7 +627,7 @@ class DREAMMixIn:
                                 {k: v.numpy() for k, v in predictions.items()}
                             )
                             pred_df.to_csv(
-                                f"{checkpoint_path}predictions_with_model_early_stopping.csv"
+                                f"{checkpoint_path}predictions_with_model_save.csv"
                             )
 
                         if convergence_check:
@@ -655,6 +641,7 @@ class DREAMMixIn:
                         "model_state_dict": best_model_state,
                         "optimizer_state_dict": best_optimizer_state,
                         "loss": valid_loss,
+                        "best_val_loss": curr_best_val_loss,
                     },
                     f"{checkpoint_path}model.pt",
                 )
@@ -692,6 +679,68 @@ class DREAMMixIn:
         model_state_dict = module_of_edges.state_dict()
 
         return model_state_dict
+
+        # Setter Methods
+
+    def initialise_random_truth_and_output(self, batch_size, to_cuda: bool = False):
+        """
+        Initialises the network so that the output_state and ground_truth are set to random tensors.
+        Args:
+            - batch_size: size of the tensor. All tensors will have the same size.
+        NB: This is useful because output_state and ground_truth are set to None when adding nodes using self.add_fuzzy_node()
+            and having None values creates unwanted behavior when using mathematical operations (NaN propagates to non-NaN tensors)
+        """
+        for node_name in self.nodes():
+            node = self.nodes()[node_name]
+            if node["node_type"] == "biological":
+                node["ground_truth"] = torch.rand(batch_size)
+                node["output_state"] = torch.rand(batch_size)
+            else:
+                node["output_state"] = torch.rand(batch_size)
+
+            if to_cuda:
+                node["output_state"] = node["output_state"].to("cuda:0")
+                if node["node_type"] == "biological":
+                    node["ground_truth"] = node["ground_truth"].to("cuda:0")
+
+    def set_network_ground_truth(self, ground_truth, to_cuda: bool = False):
+        """
+        Set the ground_truth of each biological node. Throws a warning for each biological node
+        in the BioFuzzNet that is not observed
+        Args:
+            - ground_truth: a dict mapping the name of each biological node to a tensor representing its ground_truth.
+        NB: No ground truth value is set for non-measured nodes, the loss function should thus be consequentially chosen
+        """
+        # First check that all root nodes at least have an input
+        missing_inputs = []
+        for node in self.root_nodes:
+            if node not in ground_truth.keys():
+                missing_inputs.append(node)
+        if len(missing_inputs) > 0:
+            raise ValueError(f"Missing input values for root nodes {missing_inputs}")
+
+        for node_name in self.biological_nodes:
+            parents = [p for p in self.predecessors(node_name)]
+            if node_name in ground_truth.keys():
+                node = self.nodes()[node_name]
+                if (
+                    len(parents) > 0
+                ):  # If the node has a parent (ie is not an input node for which we for sure have the ground truth as prediction)
+                    if to_cuda:
+                        node["ground_truth"] = ground_truth[node_name].to("cuda:0")
+                    else:
+                        node["ground_truth"] = ground_truth[node_name]
+                else:
+                    if to_cuda:
+                        node["ground_truth"] = ground_truth[node_name].to("cuda:0")
+                        node["output_state"] = ground_truth[node_name].to(
+                            "cuda:0"
+                        )  # A root node does not need to be predicted
+                    else:
+                        node["ground_truth"] = ground_truth[node_name]
+                        node["output_state"] = ground_truth[
+                            node_name
+                        ]  # A root node does not need to be predicted
 
 
 class DREAMBioFuzzNet(DREAMMixIn, BioFuzzNet):
