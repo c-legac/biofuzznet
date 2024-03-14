@@ -119,6 +119,7 @@ def split_data(
     valid_cell_lines,
     do_split: bool = True,
 ):
+
     treatment_split = True
     cell_line_split = True
     if train_treatments is None and valid_treatments is None:
