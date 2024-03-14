@@ -3,7 +3,7 @@ source /opt/share/anaconda3-2019.03/x86_64/etc/profile.d/conda.sh
 conda activate biofuzznet2
 echo $CONDA_DEFAULT_ENV
 
-config_folder=/dccstor/ipc1/CAR/DREAM/Model/Test/OneCellLine/Configs/
+config_folder=/dccstor/ipc1/CAR/DREAM/Model/Test/OneCellLineOneTreatment_MEK_FAK_ERK/Configs/
 
 # for i in 66 392 291 226
 

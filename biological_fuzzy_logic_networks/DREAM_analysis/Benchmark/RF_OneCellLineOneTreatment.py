@@ -36,7 +36,7 @@ cont_features = [
 
 data = []
 for cl in train_cell_lines + test_cell_lines:
-    for tr in treatments:
+    for tr in treatments:  # First time I loop over treatments
         cl_data = pd.read_csv(
             f"/dccstor/ipc1/CAR/DREAM/DREAMdata/Time_aligned_per_cell_line/CL_incl_test/{cl}_{tr}_time9.csv"
         )
@@ -46,7 +46,7 @@ for cl in train_cell_lines + test_cell_lines:
 
 data = pd.concat(data)
 
-for treatment in treatments:
+for treatment in treatments:  # Second time I loop over treatments, whoopsie
     print(treatment)
     tr_data = data[data["treatment"] == treatment]
     train, test = train_test_split(tr_data)
