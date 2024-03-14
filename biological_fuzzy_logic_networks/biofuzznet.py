@@ -15,6 +15,7 @@ from typing import Optional
 
 import pandas as pd
 import torch
+
 # external python modules
 from networkx.classes.digraph import DiGraph
 from tqdm import tqdm
@@ -54,12 +55,12 @@ class BioFuzzNet(DiGraph):
             for node in nodes:
                 # Then we have to check manually is some of the nodes are AND gates
                 if (
-                        "_and_" in node
+                    "_and_" in node
                 ):  # Different convention than CellNOpt for more readability
                     # This node is an AND gate
                     self.add_fuzzy_node(node, "AND")
                 elif (
-                        "_or_" in node
+                    "_or_" in node
                 ):  # Different convention than CellNOpt for more readability
                     # This node is an OR gate
                     self.add_fuzzy_node(node, "OR")
@@ -170,9 +171,9 @@ class BioFuzzNet(DiGraph):
         self.add_edge(upstream_node, downstream_node, edge_type="simple", weight=1)
 
     def add_transfer_edge(
-            self,
-            upstream_node: str,
-            downstream_node: str,
+        self,
+        upstream_node: str,
+        downstream_node: str,
     ) -> None:
         """
         Add transfer directed edge (with a Hill transfer function) to the network
@@ -354,7 +355,7 @@ class BioFuzzNet(DiGraph):
             if node_name in ground_truth.keys():
                 node = self.nodes()[node_name]
                 if (
-                        len(parents) > 0
+                    len(parents) > 0
                 ):  # If the node has a parent (ie is not an input node for which we for sure have the ground truth as prediction)
                     node["ground_truth"] = ground_truth[node_name]
                 else:
@@ -457,9 +458,9 @@ class BioFuzzNet(DiGraph):
 
         # Multiply all the tensors
         return (
-                states_to_integrate[0]
-                + states_to_integrate[1]
-                - states_to_integrate[0] * states_to_integrate[1]
+            states_to_integrate[0]
+            + states_to_integrate[1]
+            - states_to_integrate[0] * states_to_integrate[1]
         )
 
     def integrate_logical_node(self, node: str) -> torch.Tensor:
@@ -512,7 +513,7 @@ class BioFuzzNet(DiGraph):
             self.nodes()[node]["output_state"] = self.integrate_logical_node(node)
 
     def update_one_timestep_cyclic_network(
-            self, input_nodes, loop_status, convergence_check=False
+        self, input_nodes, loop_status, convergence_check=False
     ) -> Optional[dict]:
         """
         Does the sequential update of a directed cyclic graph over one timestep: ie updates each node in the network only once.
@@ -678,15 +679,15 @@ class BioFuzzNet(DiGraph):
     # Optimisation methods
 
     def conduct_optimisation(
-            self,
-            input: dict,
-            ground_truth: dict,
-            test_input: dict,
-            test_ground_truth: dict,
-            epochs: int,
-            batch_size: int,
-            learning_rate: float,
-            optim_wrapper=torch.optim.Adam,
+        self,
+        input: dict,
+        ground_truth: dict,
+        test_input: dict,
+        test_ground_truth: dict,
+        epochs: int,
+        batch_size: int,
+        learning_rate: float,
+        optim_wrapper=torch.optim.Adam,
     ):
         """
         The main function of this class.
