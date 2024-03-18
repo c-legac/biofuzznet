@@ -155,7 +155,6 @@ class BioMixNet(BioFuzzNet):
         optim_wrapper=torch.optim.Adam,
         loss_weights=None,
     ):
-
         """
         The main function of this class.
         Optimise the tranfer function parameters in a FIXED topology with VARIABLE logical gates, called MIXED gates.
@@ -225,7 +224,6 @@ class BioMixNet(BioFuzzNet):
         # Train the model
         losses = pd.DataFrame(columns=["time", "loss", "phase"])
         for e in tqdm(range(epochs)):
-
             for X_batch, y_batch in dataloader:
                 # In this case we do not use X_batch explicitly, as we just need the ground truth state of each node.
                 # Reinitialise the network
@@ -268,7 +266,6 @@ class BioMixNet(BioFuzzNet):
                 )
 
             with torch.no_grad():
-
                 #   Instantiate the model
                 self.initialise_random_truth_and_output(
                     len(test_ground_truth[self.root_nodes[0]])

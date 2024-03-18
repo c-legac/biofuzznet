@@ -96,6 +96,18 @@ class BioFuzzNet(DiGraph):
             if attributes["node_type"] == "biological"
         ]
         return biological_nodes
+    
+    @property
+    def fuzzy_nodes(self):
+        """Return a list containing the names of the fuzzy nodes."""
+        fuzzy_nodes = [
+            node
+            for node, attributes in self.nodes(data=True)
+            if attributes["node_type"] in ["logic_gate_AND", "logic_gate_OR"]
+        ]
+        return fuzzy_nodes
+    
+
 
     @property
     def root_nodes(self):
@@ -413,8 +425,14 @@ class BioFuzzNet(DiGraph):
         else:
             state_to_integrate = self.propagate_along_edge(upstream_edges[0])
             ones = torch.ones(state_to_integrate.size())
+            result = ones - state_to_integrate
+            # TODO check if this is reasonable
+            zeroes = torch.isclose(result, torch.zeros(len(result)))
+            result[zeroes] = 0
+            ones = torch.isclose(result, torch.ones(len(result)))
+            result[ones] = 1
             # We work with tensors
-            return ones - state_to_integrate
+            return result
 
     def integrate_AND(self, node: str) -> torch.Tensor:
         """
@@ -435,7 +453,13 @@ class BioFuzzNet(DiGraph):
             self.propagate_along_edge(edge) for edge in upstream_edges
         ]
         # Multiply all the tensors
-        return states_to_integrate[0] * states_to_integrate[1]
+        result = states_to_integrate[0] * states_to_integrate[1]
+        # TODO check if this is reasonable
+        zeroes = torch.isclose(result, torch.zeros(len(result)))
+        result[zeroes] = 0
+        ones = torch.isclose(result, torch.ones(len(result)))
+        result[ones] = 1
+        return result
 
     def integrate_OR(self, node: str) -> torch.Tensor:
         """
@@ -457,11 +481,17 @@ class BioFuzzNet(DiGraph):
         ]
 
         # Multiply all the tensors
-        return (
+        result = (
             states_to_integrate[0]
             + states_to_integrate[1]
             - states_to_integrate[0] * states_to_integrate[1]
         )
+        # TODO check if this is reasonable
+        zeroes = torch.isclose(result, torch.zeros(len(result)))
+        result[zeroes] = 0
+        ones = torch.isclose(result, torch.ones(len(result)))
+        result[ones] = 1
+        return result
 
     def integrate_logical_node(self, node: str) -> torch.Tensor:
         """
@@ -723,7 +753,7 @@ class BioFuzzNet(DiGraph):
         torch.autograd.set_detect_anomaly(True)
         torch.set_default_tensor_type(torch.DoubleTensor)
         # Input nodes
-        if self.root_nodes == []:
+        if len(self.root_nodes) == 0:
             input_nodes = [k for k in test_input.keys()]
             print(f"There were no root nodes, {input_nodes} were used as input")
         else:
@@ -769,6 +799,7 @@ class BioFuzzNet(DiGraph):
 
                 # First reset then compute the gradients
                 optim.zero_grad()
+
                 loss.backward(retain_graph=True)
 
                 torch.nn.utils.clip_grad_value_(parameters, clip_value=5)
