@@ -610,8 +610,8 @@ class DREAMMixIn:
 
                     if early_stopping_count > patience:
                         print("Early stopping")
-                        if checkpoint_path is not None:
 
+                        if checkpoint_path is not None:
                             torch.save(
                                 {
                                     "epoch": e,
