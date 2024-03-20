@@ -21,8 +21,10 @@ class HillTransferFunction(torch.nn.Module):
         """
         torch.nn.Module.__init__(self)
 
-        self.n = torch.nn.Parameter(torch.normal(mean=1.3, std=0.4, size=(1,)))
-        self.K = torch.nn.Parameter(torch.normal(mean=-0.7, std=0.4, size=(1,)))
+        self.n = torch.nn.Parameter(
+            torch.normal(mean=0.3, std=0.4, size=(1,))
+        )  # I add one afterwards in the forward function
+        self.K = torch.nn.Parameter(torch.normal(mean=0, std=0.75, size=(1,)))
 
     def forward(self, x):
         """
@@ -30,11 +32,12 @@ class HillTransferFunction(torch.nn.Module):
         Args:
             x = value to be transformed
         """
-        # I want to constrain K and n to be positive
-        # Hence I'll feed them into an exponential
-        output = (x ** (1 + torch.exp(self.n))) / (
-            torch.exp(self.K) ** (1 + torch.exp(self.n)) + x ** (1 + torch.exp(self.n))
-        )
-
-        self.output_value = output
-        return output
+        # Hill function as in the Eduati paper
+        K = torch.exp(self.K)
+        n = 1 + torch.exp(self.n)  # Enforce n>1
+        x = 1 - x
+        output = (x**n) / (K**n + x**n)
+        # in the normalized_Hill branch we normalize the outputs
+        output = output * (1 + K**n)
+        self.output_value = 1 - output
+        return self.output_value

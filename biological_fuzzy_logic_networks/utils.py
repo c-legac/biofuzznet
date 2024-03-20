@@ -8,9 +8,8 @@ import torch
 import networkx as nx
 from typing import Tuple
 from math import exp
-
-
-torch.set_default_tensor_type(torch.DoubleTensor)
+import matplotlib.pyplot as plt
+import numpy as np
 
 
 def read_sif(filepath: str) -> Tuple[list, dict]:
@@ -239,3 +238,22 @@ def compute_RMSE_outputs(model, ground_truth) -> dict:
             / len(model.output_states[node])
         ).item()
     return rmse
+
+
+def plot_edge_function(transfer_edge, low=0, high=1):
+    """
+    Plot the transfer function at a transfer edge
+
+
+        Args:
+            - transfer_edge: the transfer edge of a Biofuzznet
+            - low: lower bound of the interval to plot
+            - high: upper bound of the interval to plot
+        Returns:
+            None
+    """
+    hill = transfer_edge["layer"]
+    xaxis = torch.tensor(np.linspace(low, high, 1000))
+    hill.forward(xaxis)
+    plt.plot(xaxis, hill.output_value.detach().numpy())
+    plt.show()
