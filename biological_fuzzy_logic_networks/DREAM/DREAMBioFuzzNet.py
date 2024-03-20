@@ -17,64 +17,95 @@ from biological_fuzzy_logic_networks.utils import has_cycle
 
 class DREAMMixIn:
     # Setter Methods
-
-    def update_fuzzy_node(self, node: str, inhibition, to_cuda: bool = False) -> None:
+    def initialise_random_truth_and_output(self, batch_size, to_cuda: bool = False):
         """
-        A wrapper to call the correct updating function depending on the type of the node.
+        Initialises the network so that the output_state and ground_truth are set to random tensors.
         Args:
-            - node: name of the node to update
+            - batch_size: size of the tensor. All tensors will have the same size.
+        NB: This is useful because output_state and ground_truth are set to None when adding nodes using self.add_fuzzy_node()
+            and having None values creates unwanted behavior when using mathematical operations (NaN propagates to non-NaN tensors)
         """
+        for node_name in self.nodes():
+            node = self.nodes()[node_name]
+            if node["node_type"] == "biological":
+                node["ground_truth"] = torch.rand(batch_size)
+                node["output_state"] = torch.rand(batch_size)
+            else:
+                node["output_state"] = torch.rand(batch_size)
 
-        node_type = self.nodes()[node]["node_type"]
-        if node_type == "biological":
-            self.nodes()[node]["output_state"] = self.update_biological_node(
-                node=node, inhibition=inhibition
-            )
-        else:
-            self.nodes()[node]["output_state"] = self.integrate_logical_node(
-                node=node, inhibition=inhibition, to_cuda=to_cuda
-            )
+            if to_cuda:
+                node["output_state"] = node["output_state"].to("cuda:0")
+                if node["node_type"] == "biological":
+                    node["ground_truth"] = node["ground_truth"].to("cuda:0")
 
-    def update_biological_node(self, node: str, inhibition) -> torch.Tensor:
+    def set_network_ground_truth(self, ground_truth, to_cuda: bool = False):
         """
-        Returns the updated output state of a node when propagating  through the graph.
+        Set the ground_truth of each biological node. Throws a warning for each biological node
+        in the BioFuzzNet that is not observed
         Args:
-            - node: name of the biological node to update
-        Return:
-            - a torch.Tensor representing the updated value of the node
+            - ground_truth: a dict mapping the name of each biological node to a tensor representing its ground_truth.
+        NB: No ground truth value is set for non-measured nodes, the loss function should thus be consequentially chosen
         """
-        parent_node = [p for p in self.predecessors(node)]
-        if len(parent_node) > 1:
-            raise AssertionError("This biological node has more than one incoming edge")
-        elif len(parent_node) == 1:
-            # The state of a root node stays the same
-            return self.propagate_along_edge(
-                edge=(parent_node[0], node), inhibition=inhibition
-            )
-        else:  # For a root edge
-            return self.nodes()[node]["ground_truth"]
+        # First check that all root nodes at least have an input
+        missing_inputs = []
+        for node in self.root_nodes:
+            if node not in ground_truth.keys():
+                missing_inputs.append(node)
+        if len(missing_inputs) > 0:
+            raise ValueError(f"Missing input values for root nodes {missing_inputs}")
 
-    def integrate_logical_node(
-        self, node: str, inhibition, to_cuda: bool = False
-    ) -> torch.Tensor:
+        for node_name in self.biological_nodes:
+            parents = [p for p in self.predecessors(node_name)]
+            if node_name in ground_truth.keys():
+                node = self.nodes()[node_name]
+                if (
+                    len(parents) > 0
+                ):  # If the node has a parent (ie is not an input node for which we for sure have the ground truth as prediction)
+                    if to_cuda:
+                        node["ground_truth"] = ground_truth[node_name].to("cuda:0")
+                    else:
+                        node["ground_truth"] = ground_truth[node_name]
+                else:
+                    if to_cuda:
+                        node["ground_truth"] = ground_truth[node_name].to("cuda:0")
+                        node["output_state"] = ground_truth[node_name].to(
+                            "cuda:0"
+                        )  # A root node does not need to be predicted
+                    else:
+                        node["ground_truth"] = ground_truth[node_name]
+                        node["output_state"] = ground_truth[
+                            node_name
+                        ]  # A root node does not need to be predicted
+
+    def propagate_along_edge(self, edge: tuple, inhibition) -> torch.Tensor:
         """
-        A wrapper around integrate_NOT, integrate_OR and integrate_AND to integrate the values
-        at any logical node independently of the gate.
+        Transmits node state along an edge.
+        If an edge is simple: then it returns the state at the upstream node. No computation occurs in this case.
+        If an edge sports a transfer function: then it computes the transfer function and returns the transformed state.
 
         Args:
-            - node: the name of the node representing the logical gate
+            edge: The edge along which to propagate the state
         Returns:
-            - The state at the logical gate after integration
-
+            The new state at the target node of the edge
         """
-        if self.nodes[node]["node_type"] == "logic_gate_AND":
-            return self.integrate_AND(node=node, inhibition=inhibition)
-        if self.nodes[node]["node_type"] == "logic_gate_OR":
-            return self.integrate_OR(node=node, inhibition=inhibition)
-        if self.nodes[node]["node_type"] == "logic_gate_NOT":
-            return self.integrate_NOT(node=node, inhibition=inhibition, to_cuda=to_cuda)
+        if edge not in self.edges():
+            raise NameError(f"The input edge {edge} does not exist.")
+            assert False
+        elif self.edges()[edge]["edge_type"] == "simple":
+            state_to_propagate = self.nodes[edge[0]]["output_state"]
+            return state_to_propagate
+        elif self.edges()[edge]["edge_type"] == "transfer_function":
+            # The preceding state has to go through the Hill layer
+            state_to_propagate = self.edges()[edge]["layer"](
+                self.nodes[edge[0]]["output_state"]
+            )
         else:
-            raise NameError("This node is not a known logic gate.")
+            NameError("The node type is incorrect")
+            assert False
+
+        if self.nodes[edge[0]]["node_type"] == "biological":
+            state_to_propagate = state_to_propagate / inhibition[edge[0]]
+        return state_to_propagate
 
     def integrate_NOT(
         self, node: str, inhibition, to_cuda: bool = False
@@ -154,35 +185,139 @@ class DREAMMixIn:
             - states_to_integrate[0] * states_to_integrate[1]
         )
 
-    def propagate_along_edge(self, edge: tuple, inhibition) -> torch.Tensor:
+    def integrate_logical_node(
+        self, node: str, inhibition, to_cuda: bool = False
+    ) -> torch.Tensor:
         """
-        Transmits node state along an edge.
-        If an edge is simple: then it returns the state at the upstream node. No computation occurs in this case.
-        If an edge sports a transfer function: then it computes the transfer function and returns the transformed state.
+        A wrapper around integrate_NOT, integrate_OR and integrate_AND to integrate the values
+        at any logical node independently of the gate.
 
         Args:
-            edge: The edge along which to propagate the state
+            - node: the name of the node representing the logical gate
         Returns:
-            The new state at the target node of the edge
+            - The state at the logical gate after integration
+
         """
-        if edge not in self.edges():
-            raise NameError(f"The input edge {edge} does not exist.")
-            assert False
-        elif self.edges()[edge]["edge_type"] == "simple":
-            state_to_propagate = self.nodes[edge[0]]["output_state"]
-            return state_to_propagate
-        elif self.edges()[edge]["edge_type"] == "transfer_function":
-            # The preceding state has to go through the Hill layer
-            state_to_propagate = self.edges()[edge]["layer"](
-                self.nodes[edge[0]]["output_state"]
+        if self.nodes[node]["node_type"] == "logic_gate_AND":
+            return self.integrate_AND(node=node, inhibition=inhibition)
+        if self.nodes[node]["node_type"] == "logic_gate_OR":
+            return self.integrate_OR(node=node, inhibition=inhibition)
+        if self.nodes[node]["node_type"] == "logic_gate_NOT":
+            return self.integrate_NOT(node=node, inhibition=inhibition, to_cuda=to_cuda)
+        else:
+            raise NameError("This node is not a known logic gate.")
+
+    def update_biological_node(self, node: str, inhibition) -> torch.Tensor:
+        """
+        Returns the updated output state of a node when propagating  through the graph.
+        Args:
+            - node: name of the biological node to update
+        Return:
+            - a torch.Tensor representing the updated value of the node
+        """
+        parent_node = [p for p in self.predecessors(node)]
+        if len(parent_node) > 1:
+            raise AssertionError("This biological node has more than one incoming edge")
+        elif len(parent_node) == 1:
+            # The state of a root node stays the same
+            return self.propagate_along_edge(
+                edge=(parent_node[0], node), inhibition=inhibition
+            )
+        else:  # For a root edge
+            return self.nodes()[node]["ground_truth"]
+
+    def update_fuzzy_node(self, node: str, inhibition, to_cuda: bool = False) -> None:
+        """
+        A wrapper to call the correct updating function depending on the type of the node.
+        Args:
+            - node: name of the node to update
+        """
+
+        node_type = self.nodes()[node]["node_type"]
+        if node_type == "biological":
+            self.nodes()[node]["output_state"] = self.update_biological_node(
+                node=node, inhibition=inhibition
             )
         else:
-            NameError("The node type is incorrect")
-            assert False
+            self.nodes()[node]["output_state"] = self.integrate_logical_node(
+                node=node, inhibition=inhibition, to_cuda=to_cuda
+            )
 
-        if self.nodes[edge[0]]["node_type"] == "biological":
-            state_to_propagate = state_to_propagate / inhibition[edge[0]]
-        return state_to_propagate
+    def update_one_timestep_cyclic_network(
+        self,
+        input_nodes,
+        inhibition,
+        loop_status,
+        convergence_check=False,
+        to_cuda: bool = False,
+    ) -> Optional[dict]:
+        """
+        Does the sequential update of a directed cyclic graph over one timestep: ie updates each node in the network only once.
+        Args:
+            - input_nodes: the node to start updating from, ie those for which we give the ground truth as input to the model
+            - loop_status: the value returned by utils.has_cycle(self) which is a tuple (bool, list) where bool is True if the
+            graph has a directed cycle, and the list is the list of all directed cycles in the graph
+            - convergence_check: default False. In case one wants to check convergence of the simulation
+                 for a graph with a loop, this Boolean should be set to True, and output state of the one-step simulation will be saved and returned. This has however not been
+                 optimised for time and memory usage. Use with caution.
+        """
+        if convergence_check:
+            warnings.warn(
+                "convergence_check has been set to True. All simulation states will be saved and returned. This has not been optimised for memory usage and is implemented in a naive manner. Proceed with caution."
+            )
+
+        current_nodes = copy.deepcopy(input_nodes)
+        non_updated_nodes = [n for n in self.nodes()]
+        while len(non_updated_nodes) > 0:
+            # curr_nodes is a queue, hence FIFO (first in first out)
+            # when popping the first item, we obtain the one that has been in the queue the longest
+            curr_node = current_nodes.pop(0)
+            # If the node has not yet been updated
+            if curr_node in non_updated_nodes:
+                can_update = False
+                non_updated_parents = [
+                    p for p in self.predecessors(curr_node) if p in non_updated_nodes
+                ]
+                # Check if parents are updated
+                if len(non_updated_parents) > 0:
+                    for p in non_updated_parents:
+                        # Check if there is a loop to which both the parent and the current node belong
+                        for cycle in loop_status[1]:
+                            if curr_node in cycle and p in cycle:
+                                # Then we will need to update curr_node without updating its parent
+                                non_updated_parents.remove(p)
+                                break
+                    # Now non_updated_parents only contains parents that are not part of a loop to which curr_node belongs
+                    if len(non_updated_parents) > 0:
+                        can_update = False
+                        for p in non_updated_parents:
+                            current_nodes.append(p)
+                    else:
+                        can_update = True
+                    # The parents that were removed will be updated later as they are still part of non_updated nodes
+                else:  # If all node parents are updated then no problem
+                    can_update = True
+                if not can_update:
+                    # Then we reappend the current visited node
+                    current_nodes.append(curr_node)
+                else:  # Here we can update
+                    # print(curr_node)
+                    self.update_fuzzy_node(curr_node, inhibition, to_cuda=to_cuda)
+                    non_updated_nodes.remove(curr_node)
+                    cont = True
+                    while cont:
+                        try:
+                            current_nodes.remove(curr_node)
+                        except ValueError:
+                            cont = False
+                    child_nodes = [c for c in self.successors(curr_node)]
+                    for c in child_nodes:
+                        if c in non_updated_nodes:
+                            current_nodes.append(c)
+        if convergence_check:
+            return self.output_states  # For checking convergence
+        else:
+            return None
 
     def sequential_update(
         self, input_nodes, inhibition, convergence_check=False, to_cuda: bool = False
@@ -291,82 +426,6 @@ class DREAMMixIn:
         else:
             return None
 
-    def update_one_timestep_cyclic_network(
-        self,
-        input_nodes,
-        inhibition,
-        loop_status,
-        convergence_check=False,
-        to_cuda: bool = False,
-    ) -> Optional[dict]:
-        """
-        Does the sequential update of a directed cyclic graph over one timestep: ie updates each node in the network only once.
-        Args:
-            - input_nodes: the node to start updating from, ie those for which we give the ground truth as input to the model
-            - loop_status: the value returned by utils.has_cycle(self) which is a tuple (bool, list) where bool is True if the
-            graph has a directed cycle, and the list is the list of all directed cycles in the graph
-            - convergence_check: default False. In case one wants to check convergence of the simulation
-                 for a graph with a loop, this Boolean should be set to True, and output state of the one-step simulation will be saved and returned. This has however not been
-                 optimised for time and memory usage. Use with caution.
-        """
-        if convergence_check:
-            warnings.warn(
-                "convergence_check has been set to True. All simulation states will be saved and returned. This has not been optimised for memory usage and is implemented in a naive manner. Proceed with caution."
-            )
-
-        current_nodes = copy.deepcopy(input_nodes)
-        non_updated_nodes = [n for n in self.nodes()]
-        while len(non_updated_nodes) > 0:
-            # curr_nodes is a queue, hence FIFO (first in first out)
-            # when popping the first item, we obtain the one that has been in the queue the longest
-            curr_node = current_nodes.pop(0)
-            # If the node has not yet been updated
-            if curr_node in non_updated_nodes:
-                can_update = False
-                non_updated_parents = [
-                    p for p in self.predecessors(curr_node) if p in non_updated_nodes
-                ]
-                # Check if parents are updated
-                if len(non_updated_parents) > 0:
-                    for p in non_updated_parents:
-                        # Check if there is a loop to which both the parent and the current node belong
-                        for cycle in loop_status[1]:
-                            if curr_node in cycle and p in cycle:
-                                # Then we will need to update curr_node without updating its parent
-                                non_updated_parents.remove(p)
-                                break
-                    # Now non_updated_parents only contains parents that are not part of a loop to which curr_node belongs
-                    if len(non_updated_parents) > 0:
-                        can_update = False
-                        for p in non_updated_parents:
-                            current_nodes.append(p)
-                    else:
-                        can_update = True
-                    # The parents that were removed will be updated later as they are still part of non_updated nodes
-                else:  # If all node parents are updated then no problem
-                    can_update = True
-                if not can_update:
-                    # Then we reappend the current visited node
-                    current_nodes.append(curr_node)
-                else:  # Here we can update
-                    # print(curr_node)
-                    self.update_fuzzy_node(curr_node, inhibition, to_cuda=to_cuda)
-                    non_updated_nodes.remove(curr_node)
-                    cont = True
-                    while cont:
-                        try:
-                            current_nodes.remove(curr_node)
-                        except ValueError:
-                            cont = False
-                    child_nodes = [c for c in self.successors(curr_node)]
-                    for c in child_nodes:
-                        if c in non_updated_nodes:
-                            current_nodes.append(c)
-        if convergence_check:
-            return self.output_states  # For checking convergence
-        else:
-            return None
-
     def conduct_optimisation(
         self,
         input: dict,
@@ -426,11 +485,6 @@ class DREAMMixIn:
         else:
             input_nodes = self.root_nodes
 
-        # Instantiate the dataset
-        # print(input)
-        # print(ground_truth)
-        # print(train_inhibitors)
-
         if tensors_to_cuda:
             for node_key, node_tensor in input.items():
                 input[node_key] = node_tensor.to("cuda:0")
@@ -448,7 +502,8 @@ class DREAMMixIn:
             # Transfer edges (model) to cuda
             for edge in self.transfer_edges:
                 self.edges()[edge]["layer"].to("cuda:0")
-
+                
+        # Instantiate the dataset
         dataset = DREAMBioFuzzDataset(input, ground_truth, train_inhibitors)
 
         # Instantiate the dataloader
@@ -506,7 +561,7 @@ class DREAMMixIn:
                 loss.backward(retain_graph=True)
 
                 torch.nn.utils.clip_grad_value_(parameters, clip_value=0.5)
-                torch.nn.utils.clip_grad_norm_(parameters, max_norm=1)
+                # torch.nn.utils.clip_grad_norm_(parameters, max_norm=1)
                 # Update the parameters
                 optim.step()
                 # We save metrics with their time to be able to compare training vs validation
@@ -679,68 +734,6 @@ class DREAMMixIn:
         model_state_dict = module_of_edges.state_dict()
 
         return model_state_dict
-
-        # Setter Methods
-
-    def initialise_random_truth_and_output(self, batch_size, to_cuda: bool = False):
-        """
-        Initialises the network so that the output_state and ground_truth are set to random tensors.
-        Args:
-            - batch_size: size of the tensor. All tensors will have the same size.
-        NB: This is useful because output_state and ground_truth are set to None when adding nodes using self.add_fuzzy_node()
-            and having None values creates unwanted behavior when using mathematical operations (NaN propagates to non-NaN tensors)
-        """
-        for node_name in self.nodes():
-            node = self.nodes()[node_name]
-            if node["node_type"] == "biological":
-                node["ground_truth"] = torch.rand(batch_size)
-                node["output_state"] = torch.rand(batch_size)
-            else:
-                node["output_state"] = torch.rand(batch_size)
-
-            if to_cuda:
-                node["output_state"] = node["output_state"].to("cuda:0")
-                if node["node_type"] == "biological":
-                    node["ground_truth"] = node["ground_truth"].to("cuda:0")
-
-    def set_network_ground_truth(self, ground_truth, to_cuda: bool = False):
-        """
-        Set the ground_truth of each biological node. Throws a warning for each biological node
-        in the BioFuzzNet that is not observed
-        Args:
-            - ground_truth: a dict mapping the name of each biological node to a tensor representing its ground_truth.
-        NB: No ground truth value is set for non-measured nodes, the loss function should thus be consequentially chosen
-        """
-        # First check that all root nodes at least have an input
-        missing_inputs = []
-        for node in self.root_nodes:
-            if node not in ground_truth.keys():
-                missing_inputs.append(node)
-        if len(missing_inputs) > 0:
-            raise ValueError(f"Missing input values for root nodes {missing_inputs}")
-
-        for node_name in self.biological_nodes:
-            parents = [p for p in self.predecessors(node_name)]
-            if node_name in ground_truth.keys():
-                node = self.nodes()[node_name]
-                if (
-                    len(parents) > 0
-                ):  # If the node has a parent (ie is not an input node for which we for sure have the ground truth as prediction)
-                    if to_cuda:
-                        node["ground_truth"] = ground_truth[node_name].to("cuda:0")
-                    else:
-                        node["ground_truth"] = ground_truth[node_name]
-                else:
-                    if to_cuda:
-                        node["ground_truth"] = ground_truth[node_name].to("cuda:0")
-                        node["output_state"] = ground_truth[node_name].to(
-                            "cuda:0"
-                        )  # A root node does not need to be predicted
-                    else:
-                        node["ground_truth"] = ground_truth[node_name]
-                        node["output_state"] = ground_truth[
-                            node_name
-                        ]  # A root node does not need to be predicted
 
 
 class DREAMBioFuzzNet(DREAMMixIn, BioFuzzNet):
