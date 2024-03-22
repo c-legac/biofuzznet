@@ -425,7 +425,6 @@ class BioFuzzNet(DiGraph):
             result[zeroes] = 0
             ones = torch.isclose(result, torch.ones(len(result)))
             result[ones] = 1
-            # We work with tensors
             return result
 
     def integrate_AND(self, node: str) -> torch.Tensor:

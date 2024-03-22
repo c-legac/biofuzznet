@@ -8,6 +8,7 @@ ALL RIGHTS RESERVED
 """
 
 import torch
+from math import log
 
 torch.set_default_tensor_type(torch.DoubleTensor)
 
@@ -21,10 +22,8 @@ class HillTransferFunction(torch.nn.Module):
         """
         torch.nn.Module.__init__(self)
 
-        self.n = torch.nn.Parameter(
-            torch.normal(mean=0.3, std=0.4, size=(1,))
-        )  # I add one afterwards in the forward function
-        self.K = torch.nn.Parameter(torch.normal(mean=0, std=0.75, size=(1,)))
+        self.n = torch.nn.Parameter(torch.normal(mean=log(2), std=0.4, size=(1,)))
+        self.K = torch.nn.Parameter(torch.normal(mean=log(0.5), std=0.2, size=(1,)))
 
     def forward(self, x):
         """
@@ -32,11 +31,12 @@ class HillTransferFunction(torch.nn.Module):
         Args:
             x = value to be transformed
         """
-        # Hill function as in the Eduati paper
-        K = torch.exp(self.K)
-        n = 1 + torch.exp(self.n)  # Enforce n>1
-        x = 1 - x
-        output = (x**n) / (K**n + x**n)
+        # Hill function as in Eduati et al. Cancer Research 2017
+        # https://doi.org/10.1158/0008-5472.CAN-17-0078
+        K = torch.exp(self.K)  # Ensure non-negative parameters
+        n = 1 + torch.exp(self.n)  # 1 + n to ensure n > 1
+        x_min = 1 - x
+        output = (x_min**n) / (K**n + x_min**n)
         # in the normalized_Hill branch we normalize the outputs
         output = output * (1 + K**n)
         self.output_value = 1 - output

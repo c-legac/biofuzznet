@@ -1,13 +1,15 @@
 from biological_fuzzy_logic_networks.DREAM import DREAMBioFuzzNet
-from biological_fuzzy_logic_networks.DREAM_analysis.train_network import get_environ_var
-from app_tunnel.apps import mlflow_tunnel
+
+# from biological_fuzzy_logic_networks.DREAM_analysis.train_network import get_environ_var
+# from app_tunnel.apps import mlflow_tunnel
 
 import torch
 import numpy as np
 import pandas as pd
 import json
 import click
-import mlflow
+
+# import mlflow
 
 
 def run_sim_and_baselines(
@@ -354,16 +356,16 @@ def main(config_path):
         config = json.load(f)
     f.close()
 
-    with mlflow_tunnel(host="mlflow") as tunnel:
-        remote_port = tunnel[5000]
-        mlflow.set_tracking_uri(f"http://localhost:{remote_port}")
-        mlflow.set_experiment(config["experiment_name"])
+    # with mlflow_tunnel(host="mlflow") as tunnel:
+    #     remote_port = tunnel[5000]
+    #     mlflow.set_tracking_uri(f"http://localhost:{remote_port}")
+    #     mlflow.set_experiment(config["experiment_name"])
 
-        job_id = get_environ_var("LSB_JOBID", fail_gracefully=True)
-        mlflow.log_param("ccc_job_id", job_id)
+    #     job_id = get_environ_var("LSB_JOBID", fail_gracefully=True)
+    #     mlflow.log_param("ccc_job_id", job_id)
 
-        log_params = {x: y for x, y in config.items() if len(str(y)) < 500}
-        mlflow.log_params(log_params)
+    #     log_params = {x: y for x, y in config.items() if len(str(y)) < 500}
+    #     mlflow.log_params(log_params)
 
     losses, pertubed_data, unpertubed_data, student, teacher = run_sim_and_baselines(
         **config

@@ -135,10 +135,10 @@ class DREAMMixIn:
 
             result = ones - state_to_integrate
             # TODO check if this is reasonable
-            zeroes = torch.isclose(result, torch.zeros(len(result)))
-            result[zeroes] = 0
-            ones = torch.isclose(result, torch.ones(len(result)))
-            result[ones] = 1
+            # zeroes = torch.isclose(result, torch.zeros(len(result)))
+            # result[zeroes] = 0
+            # ones = torch.isclose(result, torch.ones(len(result)))
+            # result[ones] = 1
             return result
 
     def integrate_AND(self, inhibition, node: str) -> torch.Tensor:
@@ -165,10 +165,10 @@ class DREAMMixIn:
         # Multiply all the tensors
         result = states_to_integrate[0] * states_to_integrate[1]
         # TODO check if this is reasonable
-        zeroes = torch.isclose(result, torch.zeros(len(result)))
-        result[zeroes] = 0
-        ones = torch.isclose(result, torch.ones(len(result)))
-        result[ones] = 1
+        # zeroes = torch.isclose(result, torch.zeros(len(result)))
+        # result[zeroes] = 0
+        # ones = torch.isclose(result, torch.ones(len(result)))
+        # result[ones] = 1
         return result
 
     def integrate_OR(self, inhibition, node: str) -> torch.Tensor:
@@ -198,10 +198,10 @@ class DREAMMixIn:
             - states_to_integrate[0] * states_to_integrate[1]
         )
         # TODO check if this is reasonable
-        zeroes = torch.isclose(result, torch.zeros(len(result)))
-        result[zeroes] = 0
-        ones = torch.isclose(result, torch.ones(len(result)))
-        result[ones] = 1
+        # zeroes = torch.isclose(result, torch.zeros(len(result)))
+        # result[zeroes] = 0
+        # ones = torch.isclose(result, torch.ones(len(result)))
+        # result[ones] = 1
         return result
 
     def integrate_logical_node(
