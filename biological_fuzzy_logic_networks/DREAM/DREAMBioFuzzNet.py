@@ -103,6 +103,7 @@ class DREAMMixIn:
             NameError("The node type is incorrect")
             assert False
 
+        # Include inhibition
         if self.nodes[edge[0]]["node_type"] == "biological":
             state_to_propagate = state_to_propagate / inhibition[edge[0]]
         return state_to_propagate
@@ -131,8 +132,14 @@ class DREAMMixIn:
 
             if to_cuda:
                 ones = ones.to("cuda:0")
-            # We work with tensors
-            return ones - state_to_integrate
+
+            result = ones - state_to_integrate
+            # TODO check if this is reasonable
+            zeroes = torch.isclose(result, torch.zeros(len(result)))
+            result[zeroes] = 0
+            ones = torch.isclose(result, torch.ones(len(result)))
+            result[ones] = 1
+            return result
 
     def integrate_AND(self, inhibition, node: str) -> torch.Tensor:
         """
@@ -156,7 +163,13 @@ class DREAMMixIn:
             for edge in upstream_edges
         ]
         # Multiply all the tensors
-        return states_to_integrate[0] * states_to_integrate[1]
+        result = states_to_integrate[0] * states_to_integrate[1]
+        # TODO check if this is reasonable
+        zeroes = torch.isclose(result, torch.zeros(len(result)))
+        result[zeroes] = 0
+        ones = torch.isclose(result, torch.ones(len(result)))
+        result[ones] = 1
+        return result
 
     def integrate_OR(self, inhibition, node: str) -> torch.Tensor:
         """
@@ -179,11 +192,17 @@ class DREAMMixIn:
         ]
 
         # Multiply all the tensors
-        return (
+        result = (
             states_to_integrate[0]
             + states_to_integrate[1]
             - states_to_integrate[0] * states_to_integrate[1]
         )
+        # TODO check if this is reasonable
+        zeroes = torch.isclose(result, torch.zeros(len(result)))
+        result[zeroes] = 0
+        ones = torch.isclose(result, torch.ones(len(result)))
+        result[ones] = 1
+        return result
 
     def integrate_logical_node(
         self, node: str, inhibition, to_cuda: bool = False
@@ -502,7 +521,7 @@ class DREAMMixIn:
             # Transfer edges (model) to cuda
             for edge in self.transfer_edges:
                 self.edges()[edge]["layer"].to("cuda:0")
-                
+
         # Instantiate the dataset
         dataset = DREAMBioFuzzDataset(input, ground_truth, train_inhibitors)
 
