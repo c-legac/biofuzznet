@@ -106,7 +106,7 @@ def fit_to_data(exp_dir, pkn_path, BFN_training_params, val_frac):
     bmn.initialise_random_truth_and_output(
         train_size, to_cuda=BFN_training_params["tensors_to_cuda"]
     )
-    losses, curr_best_val_loss, _ = bmn.conduct_optimisation(
+    losses, curr_best_val_loss = bmn.conduct_optimisation(
         input=train_input_dict,
         ground_truth=train_dict,
         train_inhibitors=train_inhibitors,
