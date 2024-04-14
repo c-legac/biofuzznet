@@ -6,7 +6,7 @@
     "divide_inhibition": 10.0,
     "train_frac": 0.7,
     "BFN_training_params": {
-        "epochs": 100,
+        "epochs": 500,
         "batch_size": 500,
         "learning_rate": 0.001,
         "tensors_to_cuda": false

@@ -10,9 +10,10 @@ from tqdm.autonotebook import tqdm
 
 from biological_fuzzy_logic_networks.DREAM.DREAMdataset import DREAMBioFuzzDataset
 from biological_fuzzy_logic_networks.biofuzznet import BioFuzzNet
-from biological_fuzzy_logic_networks.biomixnet import BioMixNet
-from biological_fuzzy_logic_networks.utils import MSE_loss, read_sif
+from biological_fuzzy_logic_networks.utils import MSE_loss, read_sif, MSE_entropy_loss
 from biological_fuzzy_logic_networks.utils import has_cycle
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class DREAMMixIn:
@@ -34,9 +35,9 @@ class DREAMMixIn:
                 node["output_state"] = torch.rand(batch_size)
 
             if to_cuda:
-                node["output_state"] = node["output_state"].to("cuda:0")
+                node["output_state"] = node["output_state"].to(device)
                 if node["node_type"] == "biological":
-                    node["ground_truth"] = node["ground_truth"].to("cuda:0")
+                    node["ground_truth"] = node["ground_truth"].to(device)
 
     def set_network_ground_truth(self, ground_truth, to_cuda: bool = False):
         """
@@ -62,14 +63,14 @@ class DREAMMixIn:
                     len(parents) > 0
                 ):  # If the node has a parent (ie is not an input node for which we for sure have the ground truth as prediction)
                     if to_cuda:
-                        node["ground_truth"] = ground_truth[node_name].to("cuda:0")
+                        node["ground_truth"] = ground_truth[node_name].to(device)
                     else:
                         node["ground_truth"] = ground_truth[node_name]
                 else:
                     if to_cuda:
-                        node["ground_truth"] = ground_truth[node_name].to("cuda:0")
+                        node["ground_truth"] = ground_truth[node_name].to(device)
                         node["output_state"] = ground_truth[node_name].to(
-                            "cuda:0"
+                            device
                         )  # A root node does not need to be predicted
                     else:
                         node["ground_truth"] = ground_truth[node_name]
@@ -95,6 +96,7 @@ class DREAMMixIn:
             state_to_propagate = self.nodes[edge[0]]["output_state"]
             return state_to_propagate
         elif self.edges()[edge]["edge_type"] == "transfer_function":
+
             # The preceding state has to go through the Hill layer
             state_to_propagate = self.edges()[edge]["layer"](
                 self.nodes[edge[0]]["output_state"]
@@ -131,7 +133,7 @@ class DREAMMixIn:
             ones = torch.ones(state_to_integrate.size())
 
             if to_cuda:
-                ones = ones.to("cuda:0")
+                ones = ones.to(device)
 
             result = ones - state_to_integrate
             # TODO check if this is reasonable
@@ -224,7 +226,7 @@ class DREAMMixIn:
         if self.nodes[node]["node_type"] == "logic_gate_NOT":
             return self.integrate_NOT(node=node, inhibition=inhibition, to_cuda=to_cuda)
         else:
-            raise NameError("This node is not a known logic gate.")
+            raise NameError(f"{node} is not a known logic gate.")
 
     def update_biological_node(self, node: str, inhibition) -> torch.Tensor:
         """
@@ -320,7 +322,6 @@ class DREAMMixIn:
                     # Then we reappend the current visited node
                     current_nodes.append(curr_node)
                 else:  # Here we can update
-                    # print(curr_node)
                     self.update_fuzzy_node(curr_node, inhibition, to_cuda=to_cuda)
                     non_updated_nodes.remove(curr_node)
                     cont = True
@@ -363,7 +364,7 @@ class DREAMMixIn:
             )
 
         if to_cuda:
-            inhibition = {k: v.to("cuda:0") for k, v in inhibition.items()}
+            inhibition = {k: v.to(device) for k, v in inhibition.items()}
 
         states = {}
         loop_status = has_cycle(self)
@@ -395,6 +396,7 @@ class DREAMMixIn:
                     # If all parents are updated, then we update
                     else:
                         self.update_fuzzy_node(curr_node, inhibition, to_cuda=to_cuda)
+
                         non_updated_nodes.remove(curr_node)
                         cont = True
                         while cont:
@@ -506,28 +508,27 @@ class DREAMMixIn:
 
         if tensors_to_cuda:
             for node_key, node_tensor in input.items():
-                input[node_key] = node_tensor.to("cuda:0")
+                input[node_key] = node_tensor.to(device)
             for node_key, node_tensor in valid_input.items():
-                valid_input[node_key] = node_tensor.to("cuda:0")
+                valid_input[node_key] = node_tensor.to(device)
             for node_key, node_tensor in ground_truth.items():
-                ground_truth[node_key] = node_tensor.to("cuda:0")
+                ground_truth[node_key] = node_tensor.to(device)
             for node_key, node_tensor in valid_ground_truth.items():
-                valid_ground_truth[node_key] = node_tensor.to("cuda:0")
+                valid_ground_truth[node_key] = node_tensor.to(device)
             for node_key, node_tensor in train_inhibitors.items():
-                train_inhibitors[node_key] = node_tensor.to("cuda:0")
+                train_inhibitors[node_key] = node_tensor.to(device)
             for node_key, node_tensor in valid_inhibitors.items():
-                valid_inhibitors[node_key] = node_tensor.to("cuda:0")
+                valid_inhibitors[node_key] = node_tensor.to(device)
 
             # Transfer edges (model) to cuda
             for edge in self.transfer_edges:
-                self.edges()[edge]["layer"].to("cuda:0")
+                self.edges()[edge]["layer"].to(device)
 
         # Instantiate the dataset
         dataset = DREAMBioFuzzDataset(input, ground_truth, train_inhibitors)
-
         # Instantiate the dataloader
         dataloader = torch.utils.data.DataLoader(
-            dataset, batch_size=batch_size, shuffle=True
+            dataset, batch_size=batch_size, shuffle=False
         )
 
         # Keep track of the parameters
@@ -548,8 +549,8 @@ class DREAMMixIn:
         for e in epoch_pbar:
             # Instantiate the model
             self.initialise_random_truth_and_output(batch_size, to_cuda=tensors_to_cuda)
-
             for X_batch, y_batch, inhibited_batch in dataloader:
+
                 # In this case we do not use X_batch explicitly, as we just need the ground truth state of each node.
                 # Reinitialise the network at the right size
                 batch_keys = list(X_batch.keys())
@@ -683,7 +684,7 @@ class DREAMMixIn:
                     early_stopping_count += 1
 
                     if early_stopping_count > patience:
-                        print("Early stopping")
+                        print("Early stopping.")
 
                         if checkpoint_path is not None:
                             torch.save(
@@ -775,9 +776,18 @@ class DREAMBioFuzzNet(DREAMMixIn, BioFuzzNet):
         return DREAMBioFuzzNet(nodes, edges)
 
 
-class DREAMBioMixNet(DREAMMixIn, BioMixNet):
-    def __init__(self, nodes=None, edges=None):
+class DREAMBioMixNet(DREAMMixIn, BioFuzzNet):
+    def __init__(self, nodes=None, edges=None, AND_param: float = 0.0):
         super(DREAMBioMixNet, self).__init__(nodes, edges)
+
+        for node in self.nodes():
+            if self.nodes()[node]["node_type"] in ["logic_gate_AND", "logic_gate_OR"]:
+                self.nodes()[node]["node_type"] = "logic_gate_MIXED"
+                self.nodes()[node]["gate"] = DREAMMixedGate(
+                    AND_param=AND_param,
+                    AND_function=self.integrate_AND,
+                    OR_function=self.integrate_OR,
+                )
 
     @classmethod
     def build_DREAMBioMixNet_from_file(cls, filepath: str):
@@ -793,3 +803,438 @@ class DREAMBioMixNet(DREAMMixIn, BioMixNet):
         """
         nodes, edges = read_sif(filepath)
         return DREAMBioMixNet(nodes, edges)
+
+    @property
+    def mixed_gates(self):
+        """Return the list of MIXED gates names in the network"""
+        mixed_gates = [
+            node
+            for node, attributes in self.nodes(data=True)
+            if attributes["node_type"] == "logic_gate_MIXED"
+        ]
+        return mixed_gates
+
+    def add_fuzzy_node(
+        self, node_name: str, type: str, AND_param=0.0
+    ):  # torch.sigmoid(0) = 0.5
+        """
+        Add node to a BioFuzzNet
+        Args:
+            - node_name: name of the node which will be used to access it
+            - type: type of the node. Should be one of BIO (biological), AND, OR, NOT (the last three being logical gate nodes)
+            - AND_param: value at which to initialise the AND_param attribute of a MIXED gate
+            - AND_function: value at which to initialise the OR_funciton attribute of a MIXED gate
+            - OR_function: value at which to initialise the OR_funciton attribute of a MIXED gate
+        """
+        # Sanity check 1: the node type should belong to "BIO", "AND", "OR", "NOT" or "MIXED"
+        types = ["BIO", "AND", "OR", "NOT", "MIXED"]
+        if type not in types:
+            ValueError(f"type should be in {types}")
+        # Sanity check 2: node should not already exist
+        if node_name in self.nodes():
+            warnings.warn(f"Node {node_name} already exists, node was not added")
+        # Add the nodes
+        if type == "BIO":
+            self.add_node(
+                node_name, node_type="biological", output_state=None, ground_truth=None
+            )
+        if type == "AND":
+            self.add_node(node_name, node_type="logic_gate_AND", output_state=None)
+        if type == "NOT":
+            self.add_node(node_name, node_type="logic_gate_NOT", output_state=None)
+        if type == "OR":
+            self.add_node(node_name, node_type="logic_gate_OR", output_state=None)
+        if type == "MIXED":
+            self.add_node(node_name, node_type="logic_gate_MIXED", output_state=None)
+            self.nodes()[node_name]["gate"] = DREAMMixedGate(
+                AND_param=AND_param,
+                AND_function=self.integrate_AND,
+                OR_function=self.integrate_OR,
+            )
+
+    def integrate_logical_node(
+        self, node: str, inhibition, to_cuda: bool = False
+    ) -> torch.Tensor:
+        """
+        A wrapper around integrate_NOT, and the MixedGate layer to integrate the different logical nodes.
+        Args:
+            node: the name of the node representing the logical gate
+        Returns:
+            The state at the logical gate after integration
+
+        """
+        if self.nodes[node]["node_type"] == "logic_gate_AND":
+            return self.integrate_AND(node=node, inhibition=inhibition)
+        elif self.nodes[node]["node_type"] == "logic_gate_OR":
+            return self.integrate_OR(node=node, inhibition=inhibition)
+        elif self.nodes[node]["node_type"] == "logic_gate_NOT":
+            return self.integrate_NOT(node=node, inhibition=inhibition)
+        elif self.nodes[node]["node_type"] == "logic_gate_MIXED":
+            return self.nodes[node]["gate"](node=node, inhibition=inhibition)
+        else:
+            raise NameError("This node is not a known logic gate.")
+
+    def conduct_optimisation(
+        self,
+        input: dict,
+        ground_truth: dict,
+        train_inhibitors: dict,
+        valid_input: dict,
+        valid_ground_truth: dict,
+        valid_inhibitors: dict,
+        epochs: int,
+        batch_size: int,
+        learning_rate: float,
+        optim_wrapper=torch.optim.Adam,
+        logger=None,
+        save_checkpoint: bool = True,
+        checkpoint_path: str = None,
+        tensors_to_cuda: bool = False,
+        patience: int = 5,
+        loss_weights: float = None,
+        mixed_gates_regularisation: float = 1.0,
+    ):
+        """
+        The main function of this class.
+        Optimise the tranfer function parameters in a FIXED topology with FIXED input gates.
+        For the moment, the optimizer is ADAM and the loss function is the MSELoss over all observed nodes (see utils.MSE_Loss)
+        Method overview:
+            The graph states are updated by traversing the graph from root node to leaf node (forward pass).
+            The transfer function parameters are then updated using backpropagation.
+            The use of backpropagation forces the use of a sequential update scheme.
+
+        Args:
+            - input: dict of torch.Tensor mapping root nodes name to their input value
+                (which is assumed to also be their ground truth value, otherwise those nodes will never be fitted correctly)
+                It is assumed that every node in input is an input node that should be known to the model prior to simulation.
+                Input nodes are then used as the start for the sequential update algorithm.
+                input should usually contain the value at root nodes, but in the case where the graph contains a cycle,
+                other nodes can be specified.
+            - ground_truth: training dict of {node_name: torch.Tensor} mapping each observed biological node to its measured values
+                Only  the nodes present in ground_truth will be used to compute the loss/
+            - valid_input: dict of torch.Tensor containing root node names mapped to the input validation data
+            - valid_ground_truth:  dict of torch.Tensor mapping node names to their value from the validation set
+            - epochs: number of epochs for optimisation
+            - batch_size: batch size for optimisation
+            - learning_rate : learning rate for optimisation with ADAM
+            - optim_wrapper: a wrapper function for the optimiser. It should take as argument:
+                - the parameters to optimise
+                - the learning rate
+
+        POSSIBLE UPDATES:
+            - Allow tuning between AND and OR gates using backpropagation
+        """
+
+        torch.autograd.set_detect_anomaly(True)
+        torch.set_default_tensor_type(torch.DoubleTensor)
+        # Input nodes
+        if len(self.root_nodes) == 0:
+            input_nodes = [k for k in valid_input.keys()]
+            print(f"There were no root nodes, {input_nodes} were used as input")
+        else:
+            input_nodes = self.root_nodes
+
+        if tensors_to_cuda:
+            for node_key, node_tensor in input.items():
+                input[node_key] = node_tensor.to(device)
+            for node_key, node_tensor in valid_input.items():
+                valid_input[node_key] = node_tensor.to(device)
+            for node_key, node_tensor in ground_truth.items():
+                ground_truth[node_key] = node_tensor.to(device)
+            for node_key, node_tensor in valid_ground_truth.items():
+                valid_ground_truth[node_key] = node_tensor.to(device)
+            for node_key, node_tensor in train_inhibitors.items():
+                train_inhibitors[node_key] = node_tensor.to(device)
+            for node_key, node_tensor in valid_inhibitors.items():
+                valid_inhibitors[node_key] = node_tensor.to(device)
+
+            # Transfer edges (model) to cuda
+            for edge in self.transfer_edges:
+                self.edges()[edge]["layer"].to(device)
+            for gate in self.mixed_gates:
+                gate = self.nodes[gate]["gate"].to(device)
+
+        # Instantiate the dataset
+        dataset = DREAMBioFuzzDataset(input, ground_truth, train_inhibitors)
+
+        # Instantiate the dataloader
+        dataloader = torch.utils.data.DataLoader(
+            dataset, batch_size=batch_size, shuffle=True
+        )
+
+        # Keep track of the parameters
+        parameters = []
+        for edge in self.transfer_edges:
+            layer = self.edges()[edge]["layer"]
+            parameters += [layer.n, layer.K]
+        for gate in self.mixed_gates:
+            gate = self.nodes[gate]["gate"]
+            parameters += [
+                gate.AND_param
+            ]  # OR_param = 1 - AND_param so no need to add it
+
+        # Set the parameters, leave possibility for other losses/solver
+        if loss_weights is None:
+            loss_weights = {n: 1 for n in self.biological_nodes}
+        optim = optim_wrapper(parameters, learning_rate)
+
+        # Train the model
+        losses = pd.DataFrame(columns=["time", "loss", "phase"])
+        curr_best_val_loss = 1e6
+        early_stopping_count = 0
+
+        epoch_pbar = tqdm(range(epochs), desc="Loss=?.??e??")
+        train_loss_running_mean = None
+        for e in epoch_pbar:
+            # Instantiate the model
+            for X_batch, y_batch, inhibited_batch in dataloader:
+                # In this case we do not use X_batch explicitly, as we just need the ground truth state of each node.
+                self.initialise_random_truth_and_output(
+                    batch_size, to_cuda=tensors_to_cuda
+                )
+                # Reinitialise the network at the right size
+
+                # predict and compute the loss
+                self.set_network_ground_truth(ground_truth=y_batch)
+
+                # Simulate
+                self.sequential_update(
+                    input_nodes, inhibited_batch, to_cuda=tensors_to_cuda
+                )
+
+                # Get the predictions
+                predictions = {
+                    k: v for k, v in self.output_states.items() if k not in input_nodes
+                }
+                labels = {k: v for k, v in y_batch.items() if k in predictions}
+                loss = MSE_entropy_loss(
+                    predictions=predictions,
+                    ground_truth=labels,
+                    gates=[self.nodes[node]["gate"] for node in self.mixed_gates],
+                    mixed_gates_regularisation=mixed_gates_regularisation,
+                )
+
+                # First reset then compute the gradients
+                optim.zero_grad()
+                loss.backward(retain_graph=True)
+
+                torch.nn.utils.clip_grad_value_(parameters, clip_value=0.5)
+                # Update the parameters
+                optim.step()
+                # We save metrics with their time to be able to compare training vs validation
+                # even though they are not logged with the same frequency
+                if logger is not None:
+                    logger.log_metric("train_loss", loss.detach().item())
+                losses = pd.concat(
+                    [
+                        losses,
+                        pd.DataFrame(
+                            {
+                                "time": datetime.now(),
+                                "loss": loss.detach().item(),
+                                "phase": "train",
+                            },
+                            index=[0],
+                        ),
+                    ],
+                    ignore_index=True,
+                )
+                if train_loss_running_mean is not None:
+                    train_loss_running_mean = (
+                        0.1 * loss.detach().item() + 0.9 * train_loss_running_mean
+                    )
+                else:
+                    train_loss_running_mean = loss.detach().item()
+                epoch_pbar.set_description(f"Loss:{train_loss_running_mean:.2e}")
+            # Validation
+            with torch.no_grad():
+                # Instantiate the model
+                self.initialise_random_truth_and_output(
+                    len(
+                        valid_ground_truth[input_nodes[0]],
+                    ),
+                    to_cuda=tensors_to_cuda,
+                )
+                self.set_network_ground_truth(ground_truth=valid_ground_truth)
+                # Simulation
+                self.sequential_update(
+                    input_nodes, valid_inhibitors, to_cuda=tensors_to_cuda
+                )
+                # Get the predictions
+                predictions = {
+                    k: v for k, v in self.output_states.items() if k not in input_nodes
+                }
+                labels = {
+                    k: v for k, v in valid_ground_truth.items() if k in predictions
+                }
+                # predictions = self.output_states
+                valid_loss = MSE_entropy_loss(
+                    predictions=predictions,
+                    ground_truth=labels,
+                    gates=[self.nodes[node]["gate"] for node in self.mixed_gates],
+                    mixed_gates_regularisation=mixed_gates_regularisation,
+                )
+
+                # No need to detach since there are no gradients
+                if logger is not None:
+                    logger.log_metric("valid_loss", valid_loss.item())
+
+                losses = pd.concat(
+                    [
+                        losses,
+                        pd.DataFrame(
+                            {
+                                "time": datetime.now(),
+                                "loss": valid_loss.item(),
+                                "phase": "valid",
+                            },
+                            index=[0],
+                        ),
+                    ],
+                    ignore_index=True,
+                )
+
+                if curr_best_val_loss > valid_loss:
+                    early_stopping_count = 0
+                    curr_best_val_loss = valid_loss
+                    if checkpoint_path is not None:
+                        module_of_edges = torch.nn.ModuleDict(
+                            {
+                                f"{edge[0]}@@@{edge[1]}": self.edges()[edge]["layer"]
+                                for edge in self.transfer_edges
+                            }
+                        )
+
+                        best_model_state = module_of_edges.state_dict()
+                        best_optimizer_state = optim.state_dict()
+
+                        # torch.save(
+                        #     {
+                        #         "epoch": e,
+                        #         "model_state_dict": best_model_state,
+                        #         "optimizer_state_dict": best_optimizer_state,
+                        #         "loss": valid_loss,
+                        #     },
+                        #     f"{checkpoint_path}model.pt",
+                        # )
+
+                        # pred_df = pd.DataFrame(
+                        #     {k: v.numpy() for k, v in predictions.items()}
+                        # )
+                        # pred_df.to_csv(f"{checkpoint_path}predictions_with_model.csv")
+                else:
+                    early_stopping_count += 1
+
+                    if early_stopping_count > patience:
+                        print("Early stopping")
+
+                        if checkpoint_path is not None:
+                            torch.save(
+                                {
+                                    "epoch": e,
+                                    "model_state_dict": best_model_state,
+                                    "optimizer_state_dict": best_optimizer_state,
+                                    "loss": valid_loss,
+                                    "best_val_loss": curr_best_val_loss,
+                                },
+                                f"{checkpoint_path}model.pt",
+                            )
+
+                            pred_df = pd.DataFrame(
+                                {k: v.numpy() for k, v in predictions.items()}
+                            )
+                            pred_df.to_csv(
+                                f"{checkpoint_path}predictions_with_model_save.csv"
+                            )
+                        return losses, curr_best_val_loss
+
+            if checkpoint_path is not None:
+                torch.save(
+                    {
+                        "epoch": e,
+                        "model_state_dict": best_model_state,
+                        "optimizer_state_dict": best_optimizer_state,
+                        "loss": valid_loss,
+                        "best_val_loss": curr_best_val_loss,
+                    },
+                    f"{checkpoint_path}model.pt",
+                )
+
+                pred_df = pd.DataFrame({k: v.numpy() for k, v in predictions.items()})
+                pred_df.to_csv(f"{checkpoint_path}predictions_with_model_save.csv")
+
+        return losses, curr_best_val_loss
+
+    def load_from_checkpoint(self, model_state_dict, model_gate_dict):
+        module_dict = torch.nn.ModuleDict(
+            {
+                f"{edge[0]}@@@{edge[1]}": self.edges()[edge]["layer"]
+                for edge in self.transfer_edges
+            }
+        )
+        module_dict.load_state_dict(model_state_dict)
+        edge_att = {
+            (k.split("@@@")[0], k.split("@@@")[1]): {"layer": v}
+            for k, v in module_dict.items()
+        }
+        nx.set_edge_attributes(self, edge_att)
+
+        for node in model_gate_dict.keys():
+            self.nodes()[node]["node_type"] = model_gate_dict[node]["node_type"]
+            if "gate" in model_gate_dict[node].keys():
+                self.nodes()[node]["gate"] = model_gate_dict[node]["gate"]
+
+    def get_checkpoint(self):
+        module_of_edges = torch.nn.ModuleDict(
+            {
+                f"{edge[0]}@@@{edge[1]}": self.edges()[edge]["layer"]
+                for edge in self.transfer_edges
+            }
+        )
+
+        model_state_dict = module_of_edges.state_dict()
+
+        model_gate_dict = {}
+        for node in self.nodes:
+            model_gate_dict[node] = {}
+            model_gate_dict[node]["node_type"] = self.nodes()[node]["node_type"]
+            if "gate" in self.nodes()[node].keys():
+                model_gate_dict[node]["gate"] = self.nodes()[node]["gate"]
+
+        return model_state_dict, model_gate_dict
+
+
+class DREAMMixedGate(torch.nn.Module):
+    """ "
+    Implement a MIXED gate which is a linear combination of an AND gate and an OR gate
+    MIXED = alpha * AND + (1 - alpha)* OR
+    """
+
+    def __init__(self, AND_param: float, AND_function, OR_function) -> None:
+        """
+        Create the MIXED gate.
+        Args:
+            - AND_param: sigma^(-1)(alpha) where alpha is the weight of the AND gate in the MIXED gate
+            - AND_function: function computed at an AND gate, should be BioMixNet.integrate_AND
+            - OR function: function computed at an OR gate, should be BioMixNet.integrate_OR
+        """
+        torch.nn.Module.__init__(self)
+        self.AND_param = torch.nn.Parameter(torch.tensor(AND_param))
+        self.AND_function = AND_function
+        self.OR_function = OR_function
+        self.output_value = None
+
+    def forward(self, node, inhibition):
+        """
+        Compute the value at the gate.
+            Args:
+                - node: node at which the input is computed
+        """
+        AND_value = self.AND_function(node=node, inhibition=inhibition)
+        OR_value = self.OR_function(node=node, inhibition=inhibition)
+        output = (
+            torch.sigmoid(self.AND_param) * AND_value
+            + (1 - torch.sigmoid(self.AND_param)) * OR_value
+        )
+        self.output_value = output
+        return output

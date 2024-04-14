@@ -130,7 +130,7 @@ def repeated_data_generation(
             )
 
             torch.save(
-                {"model_state_dict": model},
+                {"model_state_dict": model.get_checkpoint()},
                 f"{exp_dir}model_for_simulation.pt",
             )
 

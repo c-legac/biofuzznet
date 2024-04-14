@@ -106,6 +106,7 @@ def fit_to_data(exp_dir, pkn_path, BFN_training_params, val_frac):
     bmn.initialise_random_truth_and_output(
         train_size, to_cuda=BFN_training_params["tensors_to_cuda"]
     )
+
     losses, curr_best_val_loss = bmn.conduct_optimisation(
         input=train_input_dict,
         ground_truth=train_dict,
@@ -117,19 +118,20 @@ def fit_to_data(exp_dir, pkn_path, BFN_training_params, val_frac):
     )
 
     # Get output states test set
-    bmn.initialise_random_truth_and_output(
-        test_size, to_cuda=BFN_training_params["tensors_to_cuda"]
-    )
-    bmn.set_network_ground_truth(
-        test_dict, to_cuda=BFN_training_params["tensors_to_cuda"]
-    )
-
-    bmn.sequential_update(
-        bmn.root_nodes,
-        inhibition=test_inhibitors,
-        to_cuda=BFN_training_params["tensors_to_cuda"],
-    )
     with torch.no_grad():
+        bmn.initialise_random_truth_and_output(
+            test_size, to_cuda=BFN_training_params["tensors_to_cuda"]
+        )
+
+        bmn.set_network_ground_truth(
+            test_dict, to_cuda=BFN_training_params["tensors_to_cuda"]
+        )
+
+        bmn.sequential_update(
+            bmn.root_nodes,
+            inhibition=test_inhibitors,
+            to_cuda=BFN_training_params["tensors_to_cuda"],
+        )
         test_output = {
             k: v.cpu() for k, v in bmn.output_states.items() if k not in bmn.root_nodes
         }
@@ -139,41 +141,44 @@ def fit_to_data(exp_dir, pkn_path, BFN_training_params, val_frac):
 
 
 def repeated_gate_learning(
-    n_max_gates, n_repeats, out_dir, pkn_path, val_frac, BFN_training_params, **extras
+    n_gates, n_repeats, out_dir, pkn_path, val_frac, BFN_training_params, **extras
 ):
-    for n_gates in range(n_max_gates + 1):
-        print(f"Fitting {n_gates} gates")
-        for repeat in range(n_repeats):
-            print(f"Repeat {repeat}")
-            exp_dir = os.path.join(out_dir, f"{n_gates}_gates_{repeat}_repeat_")
+    print(f"Fitting {n_gates} gates")
+    for repeat in range(n_repeats):
+        print(f"Repeat {repeat}")
+        exp_dir = os.path.join(out_dir, f"{n_gates}_gates_{repeat}_repeat_")
 
-            (losses, bmn, test_output_df) = fit_to_data(
-                exp_dir=exp_dir,
-                pkn_path=pkn_path,
-                val_frac=val_frac,
-                BFN_training_params=BFN_training_params,
-            )
-            torch.save(
-                {"model_state_dict": bmn},
-                f"{exp_dir}model_for_prediction.pt",
-            )
-            parameters_opt, n_opt, K_opt = utils.obtain_params(bmn)
-            pickle.dump(
-                parameters_opt,
-                open(f"{exp_dir}parameters.p", "wb"),
-            )
-            test_output_df.to_csv(exp_dir + "test_output.csv", index=False)
-            losses.to_csv(f"{exp_dir}losses.csv")
+        (losses, bmn, test_output_df) = fit_to_data(
+            exp_dir=exp_dir,
+            pkn_path=pkn_path,
+            val_frac=val_frac,
+            BFN_training_params=BFN_training_params,
+        )
+        state_dict, gate_dict = bmn.get_checkpoint()
+        torch.save(
+            {"model_state_dict": state_dict, "model_gate_dict": gate_dict},
+            f"{exp_dir}model_for_prediction.pt",
+        )
+        parameters_opt, n_opt, K_opt = utils.obtain_params(bmn)
+        pickle.dump(
+            parameters_opt,
+            open(f"{exp_dir}parameters.p", "wb"),
+        )
+        test_output_df.to_csv(exp_dir + "test_output.csv", index=False)
+        losses.to_csv(f"{exp_dir}losses.csv")
+
+        del bmn
 
 
 @click.command()
 @click.argument("config_path")
-def main(config_path):
+@click.option("--n_gates", "-n", "n_gates", type=int)
+def main(config_path, n_gates):
     with open(config_path) as f:
         config = json.load(f)
     f.close()
 
-    repeated_gate_learning(**config)
+    repeated_gate_learning(n_gates=n_gates, **config)
 
 
 if __name__ == "__main__":
